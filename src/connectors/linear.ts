@@ -200,19 +200,32 @@ export class LinearConnector implements Connector {
     );
     addIssues(created.issues?.nodes ?? [], "Created by you");
 
-    // 3. Issues from the viewer's active team cycles
+    // 3. Issues from the viewer's active team cycles (fetched per-team to stay under complexity limits)
     try {
-      const teams = await linearQuery<TeamsResponse>(
+      const teamIds = await linearQuery<{
+        viewer: { teams: { nodes: Array<{ id: string; name: string }> } };
+      }>(
         this._token!,
-        TEAM_CYCLE_QUERY
+        `query { viewer { teams { nodes { id name } } } }`
       );
-      for (const team of teams.viewer?.teams?.nodes ?? []) {
-        const cycle = team.activeCycle;
-        if (!cycle?.issues?.nodes) continue;
-        addIssues(cycle.issues.nodes, `Cycle: ${team.name}`);
+      for (const team of teamIds.viewer?.teams?.nodes ?? []) {
+        try {
+          const cycleData = await linearQuery<{
+            team: {
+              activeCycle?: { issues: { nodes: LinearIssue[] } };
+            };
+          }>(this._token!, TEAM_CYCLE_QUERY, { teamId: team.id });
+          const cycleIssues =
+            cycleData.team?.activeCycle?.issues?.nodes ?? [];
+          addIssues(cycleIssues, `Cycle: ${team.name}`);
+        } catch (err) {
+          log().warn(
+            `[linear] Failed to fetch cycle for ${team.name}: ${err instanceof Error ? err.message : err}`
+          );
+        }
       }
     } catch {
-      // Team/cycle query may fail if no teams — that's fine
+      // Team query may fail — that's fine
     }
 
     log().info(`[linear] Total unique issues: ${events.length}`);
@@ -269,20 +282,15 @@ const CREATED_ISSUES_QUERY = `
 `;
 
 const TEAM_CYCLE_QUERY = `
-  query {
-    viewer {
-      teams {
-        nodes {
-          name
-          activeCycle {
-            name
-            issues(
-              filter: { state: { type: { nin: ["completed", "canceled"] } } }
-              first: 30
-            ) {
-              nodes { ${ISSUE_FIELDS} }
-            }
-          }
+  query($teamId: String!) {
+    team(id: $teamId) {
+      activeCycle {
+        issues(
+          filter: { state: { type: { nin: ["completed", "canceled"] } } }
+          first: 30
+          orderBy: updatedAt
+        ) {
+          nodes { ${ISSUE_FIELDS} }
         }
       }
     }
@@ -316,16 +324,3 @@ interface ViewerIssuesResponse {
   };
 }
 
-interface TeamsResponse {
-  viewer: {
-    teams: {
-      nodes: Array<{
-        name: string;
-        activeCycle?: {
-          name: string;
-          issues: { nodes: LinearIssue[] };
-        };
-      }>;
-    };
-  };
-}
