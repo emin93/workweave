@@ -77,7 +77,9 @@ export function activate(context: vscode.ExtensionContext) {
     switch (message.type) {
       case "ready": {
         const config = storage.getConfig();
-        sidebarProvider.postMessage({ type: "state:config", config });
+        log.info(`Webview ready. Onboarding state: ${config.onboardingState}`);
+        log.info(`Enabled connectors: ${JSON.stringify(config.enabledConnectors.map(c => ({ id: c.id, enabled: c.enabled })))}`);
+
         if (config.onboardingState !== "complete") {
           const detected = await onboarding.detectEnvironment();
           sidebarProvider.postMessage({
@@ -86,11 +88,20 @@ export function activate(context: vscode.ExtensionContext) {
             detectedConnectors: detected,
           });
         } else {
+          // Send config first so webview knows onboarding is complete
+          sidebarProvider.postMessage({ type: "state:config", config });
+          // Then send cached plan (may be null for a new day)
           const cachedPlan = storage.getCachedPlan();
+          log.info(`Cached plan: ${cachedPlan ? `${cachedPlan.clusters.length} clusters` : "none"}`);
           sidebarProvider.postMessage({
             type: "state:plan",
             plan: cachedPlan,
           });
+          // Auto-sync if no cached plan
+          if (!cachedPlan && config.autoSync) {
+            log.info("No cached plan for today, auto-syncing...");
+            await synthesize(sidebarProvider, storage, ingestion, onboarding);
+          }
         }
         break;
       }

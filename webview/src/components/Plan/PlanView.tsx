@@ -41,7 +41,7 @@ export function PlanView() {
 }
 
 function PlanHeader() {
-  const { plan, syncing } = usePlanStore();
+  const { plan, syncing, setView } = usePlanStore();
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -75,7 +75,10 @@ function PlanHeader() {
           </button>
           <button
             className="btn-ghost"
-            onClick={() => postMessage({ type: "action:openSettings" })}
+            onClick={() => {
+              postMessage({ type: "action:openSettings" });
+              setView("settings");
+            }}
             title="Settings"
           >
             <Settings size={14} />
