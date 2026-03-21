@@ -2,10 +2,61 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "build",
-      "group": "build",
+      "label": "build-all",
+      "dependsOn": ["build-extension", "build-webview"],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "problemMatcher": []
+    },
+    {
+      "label": "build-extension",
+      "type": "shell",
+      "command": "node esbuild.config.mjs",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "build-webview",
+      "type": "shell",
+      "command": "cd webview && npx vite build",
+      "problemMatcher": []
+    },
+    {
+      "label": "watch-all",
+      "dependsOn": ["watch-extension", "watch-webview"],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "watch-extension",
+      "type": "shell",
+      "command": "node esbuild.config.mjs --watch",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": ".", "file": 1, "location": 2, "message": 3 },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "\\[esbuild\\]"
+        }
+      }
+    },
+    {
+      "label": "watch-webview",
+      "type": "shell",
+      "command": "cd webview && npx vite build --watch",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": ".", "file": 1, "location": 2, "message": 3 },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "built in"
+        }
+      }
     }
   ]
 }

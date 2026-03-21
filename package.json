@@ -5,6 +5,10 @@
   "version": "0.1.0",
   "publisher": "workday-synthesizer",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emin93/workday-synthesizer"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -38,7 +42,7 @@
         {
           "id": "workday-synthesizer",
           "title": "Workday Synthesizer",
-          "icon": "$(calendar)"
+          "icon": "media/icon.svg"
         }
       ]
     },
@@ -60,12 +64,14 @@
     "dev": "concurrently \"pnpm run dev:extension\" \"pnpm run dev:webview\"",
     "dev:extension": "node esbuild.config.mjs --watch",
     "dev:webview": "cd webview && npx vite build --watch",
+    "package": "pnpm run build && vsce package --no-dependencies",
     "lint": "eslint src/ --ext .ts,.tsx",
     "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
     "concurrently": "^9.1.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.0.0",
