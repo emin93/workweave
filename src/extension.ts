@@ -4,7 +4,7 @@ import { ConnectorRegistry } from "./connectors/registry";
 import { GitHubConnector } from "./connectors/github";
 import { LinearConnector } from "./connectors/linear";
 import { StorageLayer } from "./storage/store";
-import { IngestionOrchestrator } from "./pipeline/ingest";
+import { IngestionOrchestrator, log } from "./pipeline/ingest";
 import { normalize } from "./pipeline/normalize";
 import { correlate } from "./pipeline/correlate";
 import { prioritize } from "./pipeline/prioritize";
@@ -188,19 +188,30 @@ async function synthesize(
       .filter((c) => c.enabled)
       .map((c) => c.id);
 
+    log.info(`Synthesizing with connectors: ${enabledIds.join(", ") || "(none)"}`);
+    log.info(`Config: ${JSON.stringify(config.enabledConnectors)}`);
+
     const rawEvents = await ingestion.fetchAll(enabledIds);
     storage.cacheRawEvents(rawEvents);
 
+    log.info(`Raw events: ${rawEvents.length}`);
+
     const artifacts = normalize(rawEvents);
+    log.info(`Artifacts: ${artifacts.length}`);
+
     const correlated = correlate(artifacts);
     const prioritized = prioritize(correlated);
+    log.info(`Task clusters: ${prioritized.length}`);
+
     const plan = schedule(prioritized, config.workdayMinutes);
+    log.info(`Plan: ${plan.clusters.length} clusters, ${plan.usedMinutes}m used`);
 
     storage.cachePlan(plan);
     sidebar.postMessage({ type: "state:plan", plan });
     updateStatusBar(plan);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    log.error(`Synthesis failed: ${msg}`);
     sidebar.postMessage({ type: "state:error", error: msg });
     vscode.window.showErrorMessage(`Workday Synthesizer: ${msg}`);
   } finally {
