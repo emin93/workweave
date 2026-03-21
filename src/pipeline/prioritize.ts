@@ -193,7 +193,9 @@ function buildSummary(artifacts: Artifact[]): string {
         ? (a.metadata.repository as string) ?? "GitHub"
         : a.connectorId === "linear"
           ? "Linear"
-          : a.connectorId;
+          : a.connectorId === "slack"
+            ? `#${(a.metadata.channel as string) ?? "Slack"}`
+            : a.connectorId;
     return source;
   }
 
@@ -268,6 +270,15 @@ function scoreCluster(cluster: TaskCluster): TaskCluster {
             `${reviewRequests.length} reviewer${reviewRequests.length > 1 ? "s" : ""} waiting`
           );
         }
+      }
+    }
+
+    if (artifact.type === "slack_message") {
+      const sp = 0.6;
+      if (sp > socialPressure) {
+        socialPressure = sp;
+        const from = artifact.metadata.from as string | undefined;
+        reasons.push(from ? `@mentioned by ${from}` : "@mentioned in Slack");
       }
     }
 

@@ -3,6 +3,7 @@ import { SidebarProvider } from "./webview/SidebarProvider";
 import { ConnectorRegistry } from "./connectors/registry";
 import { GitHubConnector } from "./connectors/github";
 import { LinearConnector } from "./connectors/linear";
+import { SlackConnector } from "./connectors/slack";
 import { StorageLayer } from "./storage/store";
 import { IngestionOrchestrator, log } from "./pipeline/ingest";
 import { normalize } from "./pipeline/normalize";
@@ -20,6 +21,10 @@ export function activate(context: vscode.ExtensionContext) {
   const registry = new ConnectorRegistry();
   registry.register(new GitHubConnector());
   registry.register(new LinearConnector());
+
+  const slackConnector = new SlackConnector();
+  slackConnector.setContext(context);
+  registry.register(slackConnector);
 
   const ingestion = new IngestionOrchestrator(registry);
   const execution = new ExecutionEngine(storage);
@@ -70,6 +75,19 @@ export function activate(context: vscode.ExtensionContext) {
         type: "state:onboarding",
         step: "not_started",
       });
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workday.setSlackToken", async () => {
+      const saved = await SlackConnector.promptForToken(context);
+      if (saved) {
+        const detected = await registry.detectAll();
+        sidebarProvider.postMessage({
+          type: "state:connectors",
+          connectors: detected,
+        });
+      }
     })
   );
 

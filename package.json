@@ -35,6 +35,11 @@
         "command": "workday.resetOnboarding",
         "title": "Reset Onboarding",
         "category": "Workday"
+      },
+      {
+        "command": "workday.setSlackToken",
+        "title": "Set Slack Token",
+        "category": "Workday"
       }
     ],
     "viewsContainers": {

@@ -72,8 +72,16 @@ export class LinearConnector implements Connector {
     return {
       available: false,
       reason: "Linear Connect extension not installed",
-      setupInstructions:
-        "Install the 'Linear Connect' extension from the VS Code marketplace",
+      setupInstructions: [
+        "1. Open the Extensions panel (Ctrl+Shift+X)",
+        '2. Search for "Linear" by Linear',
+        "3. Install the Linear Connect extension",
+        "4. Restart Cursor / VS Code",
+        "5. Re-run onboarding — Linear will appear as Ready",
+        "",
+        "The extension handles authentication automatically",
+        "via OAuth when you first sync.",
+      ].join("\n"),
     };
   }
 

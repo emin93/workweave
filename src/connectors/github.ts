@@ -72,8 +72,15 @@ export class GitHubConnector implements Connector {
       return {
         available: false,
         reason: "GitHub CLI not installed",
-        setupInstructions:
-          "Install GitHub CLI: https://cli.github.com/ then run `gh auth login`",
+        setupInstructions: [
+          "1. Install the GitHub CLI from https://cli.github.com",
+          "   • Windows: winget install GitHub.cli",
+          "   • macOS: brew install gh",
+          "   • Linux: see https://github.com/cli/cli/blob/trunk/docs/install_linux.md",
+          "2. Run: gh auth login",
+          "3. Restart Cursor / VS Code",
+          "4. Re-run onboarding — GitHub will appear as Ready",
+        ].join("\n"),
       };
     }
 
@@ -96,7 +103,12 @@ export class GitHubConnector implements Connector {
     return {
       available: false,
       reason: "GitHub CLI not authenticated",
-      setupInstructions: "Run `gh auth login` in your terminal",
+      setupInstructions: [
+        "1. Open a terminal",
+        "2. Run: gh auth login",
+        "3. Follow the prompts to authenticate with GitHub",
+        "4. Re-run onboarding or sync",
+      ].join("\n"),
     };
   }
 

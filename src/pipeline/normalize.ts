@@ -19,6 +19,8 @@ function normalizeEvent(event: RawEvent): Artifact | null {
       return normalizeGitHub(event);
     case "linear":
       return normalizeLinear(event);
+    case "slack":
+      return normalizeSlack(event);
     default:
       return null;
   }
@@ -120,6 +122,47 @@ function normalizeLinear(event: RawEvent): Artifact | null {
         )?.map((l) => l.name),
         project: (payload.project as Record<string, unknown>)?.name,
         cycle: payload.cycle,
+      },
+      relatedArtifactIds: [],
+    };
+  }
+
+  return null;
+}
+
+function normalizeSlack(event: RawEvent): Artifact | null {
+  const payload = event.rawPayload as Record<string, unknown>;
+
+  if (event.sourceType === "slack_message") {
+    const text = (payload.text as string) ?? "";
+    const channel = (payload.channel as string) ?? "unknown";
+    const from = (payload.from as string) ?? "someone";
+    const permalink = (payload.permalink as string) ?? "";
+    const ts = payload.ts as string;
+
+    const truncatedText =
+      text.length > 120 ? text.slice(0, 120) + "..." : text;
+
+    const createdAt = ts
+      ? new Date(Number(ts) * 1000).toISOString()
+      : new Date().toISOString();
+
+    return {
+      id: event.id,
+      type: "slack_message" as ArtifactType,
+      title: `Slack: ${from} in #${channel}`,
+      description: truncatedText,
+      sourceUrl: permalink,
+      connectorId: "slack",
+      externalId: ts ?? event.id,
+      priority: 0.5,
+      createdAt,
+      updatedAt: createdAt,
+      metadata: {
+        channel,
+        channelId: payload.channelId,
+        from,
+        threadTs: payload.threadTs,
       },
       relatedArtifactIds: [],
     };
