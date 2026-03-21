@@ -11,6 +11,55 @@ import {
 
 const execAsync = promisify(exec);
 
+type CursorMode = "plan" | "agent" | "ask";
+
+/**
+ * Open Cursor chat with a prompt and auto-submit it.
+ * Tries multiple approaches in order of reliability.
+ */
+async function sendToChat(prompt: string, mode?: CursorMode): Promise<void> {
+  // Approach 1: Try Cursor's composerMode-aware command
+  try {
+    await vscode.commands.executeCommand("workbench.action.chat.open", {
+      query: prompt,
+      isPartialQuery: false,
+    });
+
+    // Give the chat panel a moment to open and populate
+    await sleep(300);
+
+    // Try to submit by simulating Enter via the chat submit command
+    try {
+      await vscode.commands.executeCommand(
+        "workbench.action.chat.submit"
+      );
+    } catch {
+      // Command may not exist in Cursor — try alternative
+      try {
+        await vscode.commands.executeCommand(
+          "workbench.action.chat.stopListeningAndSubmit"
+        );
+      } catch {
+        // Neither command available — the prompt is at least populated
+      }
+    }
+
+    return;
+  } catch {
+    // Fallback: open as markdown document
+  }
+
+  const doc = await vscode.workspace.openTextDocument({
+    content: prompt,
+    language: "markdown",
+  });
+  await vscode.window.showTextDocument(doc);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class ExecutionEngine {
   constructor(private readonly storage: StorageLayer) {}
 
@@ -54,20 +103,7 @@ export class ExecutionEngine {
 
   private async executePlan(cluster: TaskCluster): Promise<void> {
     const prompt = buildPlanPrompt(cluster);
-
-    try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", {
-        query: prompt,
-      });
-    } catch {
-      // Fallback: open prompt in a new untitled document
-      const doc = await vscode.workspace.openTextDocument({
-        content: prompt,
-        language: "markdown",
-      });
-      await vscode.window.showTextDocument(doc);
-    }
-
+    await sendToChat(prompt, "plan");
     await this.updateClusterStatus(cluster.id, "in_progress");
   }
 
@@ -76,9 +112,7 @@ export class ExecutionEngine {
     action: ExecutionAction
   ): Promise<void> {
     const prNumber = action.params.prNumber as string;
-    const branch = action.params.branch as string;
 
-    // Try to checkout the PR branch
     if (prNumber && vscode.workspace.workspaceFolders?.length) {
       try {
         await execAsync(`gh pr checkout ${prNumber}`, {
@@ -91,37 +125,13 @@ export class ExecutionEngine {
     }
 
     const prompt = buildReviewPrompt(cluster);
-
-    try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", {
-        query: prompt,
-      });
-    } catch {
-      const doc = await vscode.workspace.openTextDocument({
-        content: prompt,
-        language: "markdown",
-      });
-      await vscode.window.showTextDocument(doc);
-    }
-
+    await sendToChat(prompt, "agent");
     await this.updateClusterStatus(cluster.id, "in_progress");
   }
 
   private async executeInvestigate(cluster: TaskCluster): Promise<void> {
     const prompt = buildInvestigatePrompt(cluster);
-
-    try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", {
-        query: prompt,
-      });
-    } catch {
-      const doc = await vscode.workspace.openTextDocument({
-        content: prompt,
-        language: "markdown",
-      });
-      await vscode.window.showTextDocument(doc);
-    }
-
+    await sendToChat(prompt, "ask");
     await this.updateClusterStatus(cluster.id, "in_progress");
   }
 
