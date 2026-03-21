@@ -8,16 +8,23 @@ const log = vscode.window.createOutputChannel("Workday Synthesizer", {
 
 export { log };
 
+export interface IngestionResult {
+  events: RawEvent[];
+  errors: string[];
+}
+
 export class IngestionOrchestrator {
   constructor(private readonly registry: ConnectorRegistry) {}
 
-  async fetchAll(enabledIds: string[]): Promise<RawEvent[]> {
+  async fetchAll(enabledIds: string[]): Promise<IngestionResult> {
     const connectors = this.registry.getEnabled(enabledIds);
-    log.info(`Fetching from ${connectors.length} connector(s): ${enabledIds.join(", ")}`);
+    log.info(
+      `Fetching from ${connectors.length} connector(s): ${enabledIds.join(", ")}`
+    );
 
     if (connectors.length === 0) {
       log.warn("No enabled connectors found. Check onboarding config.");
-      return [];
+      return { events: [], errors: [] };
     }
 
     const events: RawEvent[] = [];
@@ -28,10 +35,9 @@ export class IngestionOrchestrator {
         log.info(`[${connector.id}] Authenticating...`);
         const authed = await connector.authenticate();
         if (!authed) {
-          log.warn(`[${connector.id}] Authentication failed, skipping.`);
-          return [];
+          throw new Error("Authentication failed or was dismissed by user");
         }
-        log.info(`[${connector.id}] Fetching data...`);
+        log.info(`[${connector.id}] Authenticated. Fetching data...`);
         const fetched = await connector.fetch();
         log.info(`[${connector.id}] Got ${fetched.length} event(s).`);
         return fetched;
@@ -44,11 +50,12 @@ export class IngestionOrchestrator {
       if (result.status === "fulfilled") {
         events.push(...result.value);
       } else {
-        const msg = result.reason instanceof Error
-          ? result.reason.message
-          : String(result.reason);
+        const msg =
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason);
         log.error(`[${connectorId}] Failed: ${msg}`);
-        errors.push(`${connectorId}: ${msg}`);
+        errors.push(`${connectors[i].name}: ${msg}`);
       }
     }
 
@@ -58,6 +65,6 @@ export class IngestionOrchestrator {
       throw new Error(`All connectors failed:\n${errors.join("\n")}`);
     }
 
-    return events;
+    return { events, errors };
   }
 }

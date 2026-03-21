@@ -211,7 +211,9 @@ function ErrorBanner({ message }: { message: string }) {
     <div className="mx-2 mt-2 p-2 rounded bg-vscode-inputBg border border-vscode-error/30 flex items-start gap-2">
       <AlertCircle size={14} className="text-vscode-error shrink-0 mt-0.5" />
       <div>
-        <p className="text-xs text-vscode-error">{message}</p>
+        <p className="text-xs text-vscode-error whitespace-pre-wrap">
+          {message}
+        </p>
         <button
           className="text-[10px] text-vscode-link mt-1 bg-transparent border-none cursor-pointer p-0"
           onClick={() => postMessage({ type: "action:synthesize" })}

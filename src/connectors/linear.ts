@@ -36,17 +36,23 @@ async function linearQuery<T>(
           try {
             const parsed = JSON.parse(data);
             if (parsed.errors) {
-              reject(new Error(parsed.errors[0]?.message ?? "Linear API error"));
+              reject(
+                new Error(parsed.errors[0]?.message ?? "Linear API error")
+              );
             } else {
               resolve(parsed.data as T);
             }
           } catch {
-            reject(new Error("Failed to parse Linear response"));
+            reject(new Error(`Failed to parse Linear response (HTTP ${res.statusCode})`));
           }
         });
       }
     );
     req.on("error", reject);
+    req.setTimeout(15_000, () => {
+      req.destroy();
+      reject(new Error("Linear API timeout"));
+    });
     req.write(body);
     req.end();
   });
@@ -87,17 +93,32 @@ export class LinearConnector implements Connector {
 
   async authenticate(): Promise<boolean> {
     try {
-      const session = await vscode.authentication.getSession(
+      // First try silently (don't prompt if no session exists yet)
+      let session = await vscode.authentication.getSession(
         "linear",
         ["read"],
-        { createIfNone: true }
+        { silent: true }
       );
+
+      if (!session) {
+        // No existing session -- prompt the user to sign in
+        session = await vscode.authentication.getSession(
+          "linear",
+          ["read"],
+          { createIfNone: true }
+        );
+      }
+
       if (session) {
         this._token = session.accessToken;
         return true;
       }
-    } catch {
-      // Auth failed
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // User may have dismissed the auth prompt -- that's not a hard error
+      if (!msg.includes("User did not consent")) {
+        throw new Error(`Linear authentication failed: ${msg}`);
+      }
     }
     return false;
   }
@@ -111,27 +132,30 @@ export class LinearConnector implements Connector {
   async fetch(): Promise<RawEvent[]> {
     if (!this._token) {
       const ok = await this.authenticate();
-      if (!ok) return [];
+      if (!ok) {
+        throw new Error(
+          "Linear authentication required. A browser window should have opened — please sign in and sync again."
+        );
+      }
     }
 
     const events: RawEvent[] = [];
     const now = new Date().toISOString();
 
-    try {
-      const data = await linearQuery<LinearIssuesResponse>(this._token!, ASSIGNED_ISSUES_QUERY);
-      const issues = data.viewer?.assignedIssues?.nodes ?? [];
+    const data = await linearQuery<LinearIssuesResponse>(
+      this._token!,
+      ASSIGNED_ISSUES_QUERY
+    );
+    const issues = data.viewer?.assignedIssues?.nodes ?? [];
 
-      for (const issue of issues) {
-        events.push({
-          id: `linear-issue-${issue.identifier}`,
-          connectorId: this.id,
-          sourceType: "issue",
-          rawPayload: issue,
-          fetchedAt: now,
-        });
-      }
-    } catch {
-      // Silently skip
+    for (const issue of issues) {
+      events.push({
+        id: `linear-issue-${issue.identifier}`,
+        connectorId: this.id,
+        sourceType: "issue",
+        rawPayload: issue,
+        fetchedAt: now,
+      });
     }
 
     return events;

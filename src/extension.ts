@@ -240,10 +240,20 @@ async function synthesize(
       return;
     }
 
-    const rawEvents = await ingestion.fetchAll(enabledIds);
+    const { events: rawEvents, errors: connectorErrors } =
+      await ingestion.fetchAll(enabledIds);
     storage.cacheRawEvents(rawEvents);
 
     log.info(`Raw events: ${rawEvents.length}`);
+
+    if (connectorErrors.length > 0) {
+      const warning = connectorErrors.join("\n");
+      log.warn(`Partial connector failures:\n${warning}`);
+      sidebar.postMessage({
+        type: "state:error",
+        error: `Some connectors had issues:\n${warning}`,
+      });
+    }
 
     const artifacts = normalize(rawEvents);
     log.info(`Artifacts: ${artifacts.length}`);
@@ -253,7 +263,9 @@ async function synthesize(
     log.info(`Task clusters: ${prioritized.length}`);
 
     const plan = schedule(prioritized, config.workdayMinutes);
-    log.info(`Plan: ${plan.clusters.length} clusters, ${plan.usedMinutes}m used`);
+    log.info(
+      `Plan: ${plan.clusters.length} clusters, ${plan.usedMinutes}m used`
+    );
 
     storage.cachePlan(plan);
     sidebar.postMessage({ type: "state:plan", plan });
