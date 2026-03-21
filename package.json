@@ -40,6 +40,16 @@
         "command": "workday.setSlackToken",
         "title": "Set Slack Token",
         "category": "Workday"
+      },
+      {
+        "command": "workday.nextTask",
+        "title": "Focus Next Task",
+        "category": "Workday"
+      },
+      {
+        "command": "workday.completeTask",
+        "title": "Complete Current Task",
+        "category": "Workday"
       }
     ],
     "viewsContainers": {
