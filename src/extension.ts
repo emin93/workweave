@@ -82,6 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         if (config.onboardingState !== "complete") {
           const detected = await onboarding.detectEnvironment();
+          log.info(`Detected connectors: ${JSON.stringify(detected.map(c => ({ id: c.id, available: c.status.available })))}`);
           sidebarProvider.postMessage({
             type: "state:onboarding",
             step: config.onboardingState === "not_started" ? "detecting" : config.onboardingState,
@@ -135,7 +136,9 @@ export function activate(context: vscode.ExtensionContext) {
         updateStatusBar(storage.getCachedPlan());
         break;
       case "onboarding:selectConnectors":
+        log.info(`Selecting connectors: ${JSON.stringify(message.connectorIds)}`);
         await onboarding.selectConnectors(message.connectorIds);
+        log.info(`Config after select: ${JSON.stringify(storage.getConfig().enabledConnectors)}`);
         sidebarProvider.postMessage({
           type: "state:onboarding",
           step: "configuring",
@@ -200,7 +203,24 @@ async function synthesize(
       .map((c) => c.id);
 
     log.info(`Synthesizing with connectors: ${enabledIds.join(", ") || "(none)"}`);
-    log.info(`Config: ${JSON.stringify(config.enabledConnectors)}`);
+    log.info(`All connector configs: ${JSON.stringify(config.enabledConnectors)}`);
+
+    if (enabledIds.length === 0) {
+      log.warn("No connectors enabled. Resetting onboarding.");
+      sidebar.postMessage({
+        type: "state:error",
+        error: "No connectors enabled. Please set up your connectors.",
+      });
+      await onboarding.reset();
+      const detected = await onboarding.detectEnvironment();
+      sidebar.postMessage({
+        type: "state:onboarding",
+        step: "detecting",
+        detectedConnectors: detected,
+      });
+      sidebar.postMessage({ type: "state:syncing", syncing: false });
+      return;
+    }
 
     const rawEvents = await ingestion.fetchAll(enabledIds);
     storage.cacheRawEvents(rawEvents);
