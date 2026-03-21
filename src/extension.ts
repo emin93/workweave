@@ -71,9 +71,11 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("workday.resetOnboarding", async () => {
       await onboarding.reset();
+      const detected = await onboarding.detectEnvironment();
       sidebarProvider.postMessage({
         type: "state:onboarding",
-        step: "not_started",
+        step: "detecting",
+        detectedConnectors: detected,
       });
     })
   );
@@ -183,13 +185,16 @@ export function activate(context: vscode.ExtensionContext) {
           config: storage.getConfig(),
         });
         break;
-      case "action:resetOnboarding":
+      case "action:resetOnboarding": {
         await onboarding.reset();
+        const detected = await onboarding.detectEnvironment();
         sidebarProvider.postMessage({
           type: "state:onboarding",
-          step: "not_started",
+          step: "detecting",
+          detectedConnectors: detected,
         });
         break;
+      }
     }
   }
 
