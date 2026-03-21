@@ -1,0 +1,221 @@
+import * as vscode from "vscode";
+import { SidebarProvider } from "./webview/SidebarProvider";
+import { ConnectorRegistry } from "./connectors/registry";
+import { GitHubConnector } from "./connectors/github";
+import { LinearConnector } from "./connectors/linear";
+import { StorageLayer } from "./storage/store";
+import { IngestionOrchestrator } from "./pipeline/ingest";
+import { normalize } from "./pipeline/normalize";
+import { correlate } from "./pipeline/correlate";
+import { prioritize } from "./pipeline/prioritize";
+import { schedule } from "./pipeline/schedule";
+import { ExecutionEngine } from "./execution/actions";
+import { OnboardingManager } from "./onboarding/wizard";
+import type { UserConfig, WorkdayPlan, WebviewMessage } from "./types";
+
+let statusBarItem: vscode.StatusBarItem;
+
+export function activate(context: vscode.ExtensionContext) {
+  const storage = new StorageLayer(context);
+  const registry = new ConnectorRegistry();
+  registry.register(new GitHubConnector());
+  registry.register(new LinearConnector());
+
+  const ingestion = new IngestionOrchestrator(registry);
+  const execution = new ExecutionEngine(storage);
+  const onboarding = new OnboardingManager(storage, registry);
+
+  const sidebarProvider = new SidebarProvider(
+    context.extensionUri,
+    context,
+    handleWebviewMessage
+  );
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      "workday.sidebarView",
+      sidebarProvider
+    )
+  );
+
+  statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    50
+  );
+  statusBarItem.command = "workday.synthesize";
+  statusBarItem.text = "$(calendar) Workday";
+  statusBarItem.tooltip = "Synthesize your workday";
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workday.synthesize", () =>
+      synthesize(sidebarProvider, storage, ingestion, onboarding)
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workday.openSettings", () => {
+      sidebarProvider.postMessage({
+        type: "state:config",
+        config: storage.getConfig(),
+      });
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workday.resetOnboarding", async () => {
+      await onboarding.reset();
+      sidebarProvider.postMessage({
+        type: "state:onboarding",
+        step: "not_started",
+      });
+    })
+  );
+
+  async function handleWebviewMessage(message: WebviewMessage) {
+    switch (message.type) {
+      case "ready": {
+        const config = storage.getConfig();
+        sidebarProvider.postMessage({ type: "state:config", config });
+        if (config.onboardingState !== "complete") {
+          const detected = await onboarding.detectEnvironment();
+          sidebarProvider.postMessage({
+            type: "state:onboarding",
+            step: config.onboardingState === "not_started" ? "detecting" : config.onboardingState,
+            detectedConnectors: detected,
+          });
+        } else {
+          const cachedPlan = storage.getCachedPlan();
+          sidebarProvider.postMessage({
+            type: "state:plan",
+            plan: cachedPlan,
+          });
+        }
+        break;
+      }
+      case "action:synthesize":
+        await synthesize(sidebarProvider, storage, ingestion, onboarding);
+        break;
+      case "action:execute":
+        await execution.execute(
+          message.clusterId,
+          message.actionId,
+          storage.getCachedPlan()
+        );
+        break;
+      case "action:snooze":
+        await execution.snooze(
+          message.clusterId,
+          message.hours,
+          storage
+        );
+        sidebarProvider.postMessage({
+          type: "state:plan",
+          plan: storage.getCachedPlan(),
+        });
+        break;
+      case "action:markDone":
+        await execution.markDone(message.clusterId, storage);
+        sidebarProvider.postMessage({
+          type: "state:plan",
+          plan: storage.getCachedPlan(),
+        });
+        updateStatusBar(storage.getCachedPlan());
+        break;
+      case "onboarding:selectConnectors":
+        await onboarding.selectConnectors(message.connectorIds);
+        sidebarProvider.postMessage({
+          type: "state:onboarding",
+          step: "configuring",
+        });
+        break;
+      case "onboarding:configure":
+        await onboarding.configure(message.config);
+        sidebarProvider.postMessage({
+          type: "state:onboarding",
+          step: "validating",
+        });
+        break;
+      case "onboarding:complete":
+        await onboarding.complete();
+        sidebarProvider.postMessage({
+          type: "state:onboarding",
+          step: "complete",
+        });
+        await synthesize(sidebarProvider, storage, ingestion, onboarding);
+        break;
+      case "action:openSettings":
+        sidebarProvider.postMessage({
+          type: "state:config",
+          config: storage.getConfig(),
+        });
+        break;
+      case "action:resetOnboarding":
+        await onboarding.reset();
+        sidebarProvider.postMessage({
+          type: "state:onboarding",
+          step: "not_started",
+        });
+        break;
+    }
+  }
+
+  const config = storage.getConfig();
+  if (config.onboardingState === "complete" && config.autoSync) {
+    setTimeout(() => {
+      synthesize(sidebarProvider, storage, ingestion, onboarding);
+    }, 3000);
+  }
+}
+
+async function synthesize(
+  sidebar: SidebarProvider,
+  storage: StorageLayer,
+  ingestion: IngestionOrchestrator,
+  onboarding: OnboardingManager
+) {
+  const config = storage.getConfig();
+  if (config.onboardingState !== "complete") {
+    return;
+  }
+
+  sidebar.postMessage({ type: "state:syncing", syncing: true });
+  statusBarItem.text = "$(sync~spin) Syncing...";
+
+  try {
+    const enabledIds = config.enabledConnectors
+      .filter((c) => c.enabled)
+      .map((c) => c.id);
+
+    const rawEvents = await ingestion.fetchAll(enabledIds);
+    storage.cacheRawEvents(rawEvents);
+
+    const artifacts = normalize(rawEvents);
+    const correlated = correlate(artifacts);
+    const prioritized = prioritize(correlated);
+    const plan = schedule(prioritized, config.workdayMinutes);
+
+    storage.cachePlan(plan);
+    sidebar.postMessage({ type: "state:plan", plan });
+    updateStatusBar(plan);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sidebar.postMessage({ type: "state:error", error: msg });
+    vscode.window.showErrorMessage(`Workday Synthesizer: ${msg}`);
+  } finally {
+    sidebar.postMessage({ type: "state:syncing", syncing: false });
+  }
+}
+
+function updateStatusBar(plan: WorkdayPlan | null) {
+  if (!plan) {
+    statusBarItem.text = "$(calendar) Workday";
+    return;
+  }
+  const done = plan.clusters.filter((c) => c.status === "done").length;
+  const total = plan.clusters.length;
+  statusBarItem.text = `$(calendar) Workday: ${done}/${total} done`;
+}
+
+export function deactivate() {}

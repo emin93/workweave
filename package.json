@@ -1,0 +1,78 @@
+{
+  "name": "workday-synthesizer",
+  "displayName": "Workday Synthesizer",
+  "description": "Synthesize your workday from scattered signals into focused execution",
+  "version": "0.1.0",
+  "publisher": "workday-synthesizer",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "workday.synthesize",
+        "title": "Synthesize My Day",
+        "category": "Workday"
+      },
+      {
+        "command": "workday.openSettings",
+        "title": "Open Settings",
+        "category": "Workday"
+      },
+      {
+        "command": "workday.resetOnboarding",
+        "title": "Reset Onboarding",
+        "category": "Workday"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "workday-synthesizer",
+          "title": "Workday Synthesizer",
+          "icon": "$(calendar)"
+        }
+      ]
+    },
+    "views": {
+      "workday-synthesizer": [
+        {
+          "type": "webview",
+          "id": "workday.sidebarView",
+          "name": "Workday"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "pnpm run build:extension && pnpm run build:webview",
+    "build:extension": "node esbuild.config.mjs",
+    "build:webview": "cd webview && npx vite build",
+    "dev": "concurrently \"pnpm run dev:extension\" \"pnpm run dev:webview\"",
+    "dev:extension": "node esbuild.config.mjs --watch",
+    "dev:webview": "cd webview && npx vite build --watch",
+    "lint": "eslint src/ --ext .ts,.tsx",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.8"
+  }
+}

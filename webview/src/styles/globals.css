@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-3 py-1.5 text-xs font-medium rounded
+      bg-vscode-buttonBg text-vscode-buttonFg
+      hover:bg-vscode-buttonHover
+      transition-colors cursor-pointer
+      border-none outline-none;
+  }
+
+  .btn-secondary {
+    @apply px-3 py-1.5 text-xs font-medium rounded
+      bg-vscode-secondaryBg text-vscode-secondaryFg
+      hover:bg-vscode-secondaryHover
+      transition-colors cursor-pointer
+      border-none outline-none;
+  }
+
+  .btn-ghost {
+    @apply px-2 py-1 text-xs rounded
+      text-vscode-descFg
+      hover:bg-vscode-listHover
+      transition-colors cursor-pointer
+      border-none outline-none bg-transparent;
+  }
+
+  .card {
+    @apply rounded-md border border-vscode-border p-3 mb-2;
+  }
+
+  .input {
+    @apply w-full px-2 py-1.5 text-xs rounded
+      bg-vscode-inputBg text-vscode-inputFg
+      border border-vscode-inputBorder
+      outline-none focus:border-vscode-link;
+  }
+}
