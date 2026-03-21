@@ -25,7 +25,7 @@ async function linearQuery<T>(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token,
+          Authorization: `Bearer ${token}`,
           "Content-Length": Buffer.byteLength(body),
         },
       },
