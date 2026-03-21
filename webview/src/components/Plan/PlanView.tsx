@@ -2,6 +2,7 @@ import React from "react";
 import { usePlanStore } from "../../stores/planStore";
 import { postMessage } from "../../hooks/useVSCode";
 import { TaskGroup } from "./TaskGroup";
+import { TaskCard } from "../TaskCard/TaskCard";
 import {
   RefreshCw,
   Settings,
@@ -10,17 +11,7 @@ import {
   AlertCircle,
   Inbox,
 } from "lucide-react";
-import type { TaskCluster, TaskCategory } from "../../../../src/types";
-
-const CATEGORY_LABELS: Record<TaskCategory, string> = {
-  review: "Reviews",
-  implementation: "Implementation",
-  respond: "Respond",
-  investigate: "Investigate",
-  meeting_prep: "Meeting Prep",
-  follow_up: "Follow Up",
-  other: "Other",
-};
+import type { TaskCluster } from "../../../../src/types";
 
 export function PlanView() {
   const { plan, syncing, error } = usePlanStore();
@@ -103,16 +94,22 @@ function PlanContent({
   const activeClusters = plan.clusters.filter(
     (c: TaskCluster) => c.status !== "snoozed" && c.status !== "done"
   );
-  const doneClusters = plan.clusters.filter((c: TaskCluster) => c.status === "done");
-  const snoozedClusters = plan.clusters.filter((c: TaskCluster) => c.status === "snoozed");
+  const doneClusters = plan.clusters.filter(
+    (c: TaskCluster) => c.status === "done"
+  );
+  const snoozedClusters = plan.clusters.filter(
+    (c: TaskCluster) => c.status === "snoozed"
+  );
 
-  const scheduled = activeClusters.filter((c: TaskCluster) => c.scheduledSlot);
-  const backlog = activeClusters.filter((c: TaskCluster) => !c.scheduledSlot);
-
-  const grouped = groupByCategory(scheduled);
+  const scheduled = activeClusters.filter(
+    (c: TaskCluster) => c.scheduledSlot
+  );
+  const backlog = activeClusters.filter(
+    (c: TaskCluster) => !c.scheduledSlot
+  );
 
   return (
-    <div className="flex-1 overflow-y-auto p-2 space-y-3">
+    <div className="flex-1 overflow-y-auto p-2 space-y-1">
       {syncing && (
         <div className="flex items-center gap-2 px-2 py-1 text-[10px] text-vscode-descFg">
           <Loader2 size={10} className="animate-spin" />
@@ -120,22 +117,22 @@ function PlanContent({
         </div>
       )}
 
-      {grouped.map(([category, clusters]) => (
-        <TaskGroup
-          key={category}
-          label={CATEGORY_LABELS[category as TaskCategory] ?? category}
-          clusters={clusters}
-          totalMinutes={clusters.reduce((s: number, c: TaskCluster) => s + c.estimatedMinutes, 0)}
-        />
+      {scheduled.map((cluster, i) => (
+        <TaskCard key={cluster.id} cluster={cluster} index={i + 1} />
       ))}
 
       {backlog.length > 0 && (
-        <TaskGroup
-          label="Backlog"
-          clusters={backlog}
-          totalMinutes={backlog.reduce((s: number, c: TaskCluster) => s + c.estimatedMinutes, 0)}
-          collapsed
-        />
+        <div className="pt-2">
+          <TaskGroup
+            label="Backlog"
+            clusters={backlog}
+            totalMinutes={backlog.reduce(
+              (s: number, c: TaskCluster) => s + c.estimatedMinutes,
+              0
+            )}
+            collapsed
+          />
+        </div>
       )}
 
       {doneClusters.length > 0 && (
@@ -157,18 +154,6 @@ function PlanContent({
       )}
     </div>
   );
-}
-
-function groupByCategory(
-  clusters: TaskCluster[]
-): [string, TaskCluster[]][] {
-  const map = new Map<string, TaskCluster[]>();
-  for (const c of clusters) {
-    const group = map.get(c.category) ?? [];
-    group.push(c);
-    map.set(c.category, group);
-  }
-  return Array.from(map.entries());
 }
 
 function EmptyState() {
@@ -193,7 +178,9 @@ function LoadingState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6">
       <Loader2 size={24} className="animate-spin text-vscode-link mb-3" />
-      <p className="text-xs text-vscode-descFg">Synthesizing your workday...</p>
+      <p className="text-xs text-vscode-descFg">
+        Synthesizing your workday...
+      </p>
       <div className="mt-4 space-y-2 w-full">
         {[1, 2, 3].map((i) => (
           <div key={i} className="card animate-pulse">

@@ -11,7 +11,12 @@ import {
   ChevronRight,
   Info,
 } from "lucide-react";
-import type { TaskCluster, ExecutionAction, ActionType } from "../../../../src/types";
+import type {
+  TaskCluster,
+  ExecutionAction,
+  ActionType,
+  TaskCategory,
+} from "../../../../src/types";
 
 const ACTION_ICONS: Record<ActionType, React.ReactNode> = {
   review: <GitPullRequest size={12} />,
@@ -22,21 +27,36 @@ const ACTION_ICONS: Record<ActionType, React.ReactNode> = {
   start_work: <Reply size={12} />,
 };
 
+const CATEGORY_BADGE: Record<TaskCategory, { label: string; color: string }> = {
+  review: { label: "Review", color: "text-purple-400" },
+  implementation: { label: "Implement", color: "text-blue-400" },
+  respond: { label: "Reply", color: "text-green-400" },
+  investigate: { label: "Investigate", color: "text-yellow-400" },
+  meeting_prep: { label: "Meeting", color: "text-orange-400" },
+  follow_up: { label: "Follow up", color: "text-cyan-400" },
+  other: { label: "Task", color: "text-vscode-descFg" },
+};
+
 interface TaskCardProps {
   cluster: TaskCluster;
+  index?: number;
 }
 
-export function TaskCard({ cluster }: TaskCardProps) {
+export function TaskCard({ cluster, index }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isDone = cluster.status === "done";
   const isSnoozed = cluster.status === "snoozed";
   const isInProgress = cluster.status === "in_progress";
 
+  const badge = CATEGORY_BADGE[cluster.category] ?? CATEGORY_BADGE.other;
+
   const primaryActions = cluster.actions.filter(
-    (a) => a.type !== "mark_done" && a.type !== "snooze" && a.type !== "open_url"
+    (a) =>
+      a.type !== "mark_done" && a.type !== "snooze" && a.type !== "open_url"
   );
   const secondaryActions = cluster.actions.filter(
-    (a) => a.type === "open_url" || a.type === "mark_done" || a.type === "snooze"
+    (a) =>
+      a.type === "open_url" || a.type === "mark_done" || a.type === "snooze"
   );
 
   return (
@@ -52,6 +72,11 @@ export function TaskCard({ cluster }: TaskCardProps) {
       }`}
     >
       <div className="flex items-start gap-2">
+        {index !== undefined && (
+          <span className="text-[10px] font-bold text-vscode-descFg mt-0.5 w-4 shrink-0 text-right">
+            {index}
+          </span>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             {isInProgress && (
@@ -65,12 +90,18 @@ export function TaskCard({ cluster }: TaskCardProps) {
           </div>
 
           <div className="flex items-center gap-2 mt-0.5">
+            <span
+              className={`text-[9px] font-semibold uppercase tracking-wider ${badge.color}`}
+            >
+              {badge.label}
+            </span>
             <span className="text-[10px] text-vscode-descFg">
               {cluster.summary}
             </span>
             {cluster.estimatedMinutes > 0 && (
               <span className="text-[10px] text-vscode-descFg">
-                ~{cluster.estimatedMinutes >= 60
+                ~
+                {cluster.estimatedMinutes >= 60
                   ? `${(cluster.estimatedMinutes / 60).toFixed(1)}h`
                   : `${cluster.estimatedMinutes}m`}
               </span>
@@ -96,11 +127,7 @@ export function TaskCard({ cluster }: TaskCardProps) {
           onClick={() => setExpanded(!expanded)}
           title="Details"
         >
-          {expanded ? (
-            <ChevronDown size={12} />
-          ) : (
-            <Info size={12} />
-          )}
+          {expanded ? <ChevronDown size={12} /> : <Info size={12} />}
         </button>
       </div>
 
@@ -164,7 +191,10 @@ export function TaskCard({ cluster }: TaskCardProps) {
             {cluster.priorityScore.toFixed(1)}/100
           </div>
           {cluster.priorityReasons.map((reason, i) => (
-            <div key={i} className="text-[10px] text-vscode-descFg flex items-center gap-1">
+            <div
+              key={i}
+              className="text-[10px] text-vscode-descFg flex items-center gap-1"
+            >
               <span className="text-vscode-warning">&#x2022;</span> {reason}
             </div>
           ))}
@@ -175,7 +205,10 @@ export function TaskCard({ cluster }: TaskCardProps) {
             </div>
           )}
           {cluster.artifacts.map((a) => (
-            <div key={a.id} className="text-[10px] text-vscode-descFg flex items-center gap-1">
+            <div
+              key={a.id}
+              className="text-[10px] text-vscode-descFg flex items-center gap-1"
+            >
               <span className="opacity-50">[{a.type}]</span>
               <a
                 href={a.sourceUrl}
