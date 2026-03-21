@@ -101,12 +101,22 @@ function selectPrimaryArtifact(artifacts: Artifact[]): Artifact {
   )[0];
 }
 
+const INVESTIGATE_PATTERNS = /\b(check out|try out|look into|explore|evaluate|investigate|research|learn about|look at|play with|experiment|spike|poc|proof of concept|compare)\b/i;
+
 function inferCategory(artifacts: Artifact[]): TaskCategory {
   const types = new Set(artifacts.map((a) => a.type));
   if (types.has("pr")) return "review";
   if (types.has("slack_message") || types.has("slack_thread")) return "respond";
   if (types.has("meeting")) return "meeting_prep";
-  if (types.has("issue")) return "implementation";
+
+  if (types.has("issue")) {
+    const text = artifacts
+      .map((a) => `${a.title} ${a.description ?? ""}`)
+      .join(" ");
+    if (INVESTIGATE_PATTERNS.test(text)) return "investigate";
+    return "implementation";
+  }
+
   return "other";
 }
 
@@ -138,6 +148,22 @@ function buildActions(
       type: "plan",
       label: "Plan",
       icon: "lightbulb",
+      params: {
+        issueUrl: primary.sourceUrl,
+        title: primary.title,
+        description: primary.description,
+        externalId: primary.externalId,
+        connectorId: primary.connectorId,
+      },
+    });
+  }
+
+  if (category === "investigate") {
+    actions.push({
+      id: "investigate",
+      type: "investigate",
+      label: "Research",
+      icon: "search",
       params: {
         issueUrl: primary.sourceUrl,
         title: primary.title,

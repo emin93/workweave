@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
+  Search,
 } from "lucide-react";
 import type {
   TaskCluster,
@@ -21,6 +22,7 @@ import type {
 const ACTION_ICONS: Record<ActionType, React.ReactNode> = {
   review: <GitPullRequest size={12} />,
   plan: <Lightbulb size={12} />,
+  investigate: <Search size={12} />,
   open_url: <ExternalLink size={12} />,
   mark_done: <Check size={12} />,
   snooze: <Clock size={12} />,

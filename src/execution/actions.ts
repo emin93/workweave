@@ -3,7 +3,11 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import type { WorkdayPlan, TaskCluster, ExecutionAction } from "../types";
 import type { StorageLayer } from "../storage/store";
-import { buildPlanPrompt, buildReviewPrompt } from "./prompts";
+import {
+  buildPlanPrompt,
+  buildReviewPrompt,
+  buildInvestigatePrompt,
+} from "./prompts";
 
 const execAsync = promisify(exec);
 
@@ -29,6 +33,9 @@ export class ExecutionEngine {
         break;
       case "review":
         await this.executeReview(cluster, action);
+        break;
+      case "investigate":
+        await this.executeInvestigate(cluster);
         break;
       case "open_url":
         await this.openUrl(action);
@@ -84,6 +91,24 @@ export class ExecutionEngine {
     }
 
     const prompt = buildReviewPrompt(cluster);
+
+    try {
+      await vscode.commands.executeCommand("workbench.action.chat.open", {
+        query: prompt,
+      });
+    } catch {
+      const doc = await vscode.workspace.openTextDocument({
+        content: prompt,
+        language: "markdown",
+      });
+      await vscode.window.showTextDocument(doc);
+    }
+
+    await this.updateClusterStatus(cluster.id, "in_progress");
+  }
+
+  private async executeInvestigate(cluster: TaskCluster): Promise<void> {
+    const prompt = buildInvestigatePrompt(cluster);
 
     try {
       await vscode.commands.executeCommand("workbench.action.chat.open", {

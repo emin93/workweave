@@ -14,6 +14,7 @@ export type TaskStatus = "todo" | "in_progress" | "done" | "snoozed";
 export type ActionType =
   | "plan"
   | "review"
+  | "investigate"
   | "open_url"
   | "mark_done"
   | "snooze"
