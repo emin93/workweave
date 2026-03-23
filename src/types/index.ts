@@ -16,6 +16,7 @@ export type ActionType =
   | "review"
   | "investigate"
   | "open_url"
+  | "context_link"
   | "mark_done"
   | "snooze"
   | "start_work";
@@ -92,6 +93,8 @@ export interface WorkdayPlan {
   totalMinutes: number;
   usedMinutes: number;
   generatedAt: string;
+  synthesisMode?: "ai" | "rules";
+  synthesisProvider?: AIProviderType;
 }
 
 // ── Connector Types ──
@@ -123,6 +126,7 @@ export type OnboardingState =
   | "not_started"
   | "detecting"
   | "selecting"
+  | "ai_setup"
   | "configuring"
   | "validating"
   | "complete";
@@ -134,12 +138,25 @@ export interface ConnectorConfig {
   settings: Record<string, unknown>;
 }
 
+export type AIProviderType = "openai" | "cursor" | "ollama";
+
+export interface AIConfig {
+  provider: AIProviderType;
+  openai?: { baseUrl?: string; model?: string };
+  ollama?: { baseUrl?: string; model?: string };
+}
+
+export const DEFAULT_AI_CONFIG: AIConfig = {
+  provider: "cursor",
+};
+
 export interface UserConfig {
   workdayMinutes: number;
   startTime: string;
   autoSync: boolean;
   enabledConnectors: ConnectorConfig[];
   onboardingState: OnboardingState;
+  ai: AIConfig;
 }
 
 export const DEFAULT_USER_CONFIG: UserConfig = {
@@ -148,6 +165,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   autoSync: true,
   enabledConnectors: [],
   onboardingState: "not_started",
+  ai: { ...DEFAULT_AI_CONFIG },
 };
 
 // ── Webview Messages ──
@@ -158,7 +176,8 @@ export type ExtensionMessage =
   | { type: "state:connectors"; connectors: ConnectorInfo[] }
   | { type: "state:syncing"; syncing: boolean }
   | { type: "state:error"; error: string }
-  | { type: "state:onboarding"; step: OnboardingState; detectedConnectors?: ConnectorInfo[] };
+  | { type: "state:onboarding"; step: OnboardingState; detectedConnectors?: ConnectorInfo[] }
+  | { type: "state:aiTestResult"; success: boolean; message: string };
 
 export type WebviewMessage =
   | { type: "action:synthesize" }
@@ -167,7 +186,11 @@ export type WebviewMessage =
   | { type: "action:markDone"; clusterId: string }
   | { type: "action:openSettings" }
   | { type: "action:resetOnboarding" }
+  | { type: "action:setAIConfig"; ai: AIConfig }
+  | { type: "action:setAIKey"; apiKey: string }
+  | { type: "action:testAI"; ai: AIConfig; apiKey?: string }
   | { type: "onboarding:selectConnectors"; connectorIds: string[] }
+  | { type: "onboarding:setAI"; ai: AIConfig; apiKey?: string }
   | { type: "onboarding:configure"; config: Partial<UserConfig> }
   | { type: "onboarding:complete" }
   | { type: "ready" };

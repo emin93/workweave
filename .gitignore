@@ -7,3 +7,4 @@ out/
 *.map
 .env
 .env.*
+.workday/

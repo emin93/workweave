@@ -1,6 +1,6 @@
 import type { StorageLayer } from "../storage/store";
 import type { ConnectorRegistry } from "../connectors/registry";
-import type { ConnectorInfo, UserConfig, ConnectorConfig } from "../types";
+import type { ConnectorInfo, UserConfig, ConnectorConfig, AIConfig } from "../types";
 
 export class OnboardingManager {
   constructor(
@@ -30,6 +30,14 @@ export class OnboardingManager {
       enabledConnectors: configs,
       onboardingState: "selecting",
     });
+  }
+
+  async saveAIConfig(ai: AIConfig, apiKey?: string): Promise<void> {
+    await this.storage.saveAIConfig(ai);
+    if (apiKey) {
+      await this.storage.setAIApiKey(apiKey);
+    }
+    await this.storage.updateConfig({ onboardingState: "ai_setup" });
   }
 
   async configure(partial: Partial<UserConfig>): Promise<void> {
@@ -83,6 +91,7 @@ export class OnboardingManager {
   }
 
   async reset(): Promise<void> {
+    await this.storage.clearSyncMetadata();
     await this.storage.updateConfig({
       onboardingState: "not_started",
       enabledConnectors: [],

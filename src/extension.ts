@@ -7,9 +7,22 @@ import { SlackConnector } from "./connectors/slack";
 import { StorageLayer } from "./storage/store";
 import { IngestionOrchestrator, log } from "./pipeline/ingest";
 import { normalize } from "./pipeline/normalize";
+import { schedule } from "./pipeline/schedule";
 import { correlate } from "./pipeline/correlate";
 import { prioritize } from "./pipeline/prioritize";
-import { schedule } from "./pipeline/schedule";
+import {
+  applyClusterStatuses,
+  calendarTodayString,
+  mergeByPriorityInsertion,
+  pruneAndRefreshClusters,
+} from "./pipeline/merge-plan";
+import { aiSynthesize } from "./pipeline/ai-synthesize";
+import {
+  OpenAIProvider,
+  OllamaProvider,
+  CursorChatProvider,
+  type LLMProvider,
+} from "./ai/provider";
 import { ExecutionEngine } from "./execution/actions";
 import { OnboardingManager } from "./onboarding/wizard";
 import type { UserConfig, WorkdayPlan, WebviewMessage } from "./types";
@@ -93,6 +106,24 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workday.setAIKey", async () => {
+      const key = await vscode.window.showInputBox({
+        title: "AI API Key",
+        prompt: "Enter your OpenAI API key (or compatible provider key)",
+        placeHolder: "sk-...",
+        password: true,
+        validateInput: (value) => {
+          if (!value) return "API key is required";
+          return null;
+        },
+      });
+      if (!key) return;
+      await storage.setAIApiKey(key);
+      vscode.window.showInformationMessage("AI API key saved.");
+    })
+  );
+
   async function handleWebviewMessage(message: WebviewMessage) {
     switch (message.type) {
       case "ready": {
@@ -161,9 +192,18 @@ export function activate(context: vscode.ExtensionContext) {
         log.info(`Config after select: ${JSON.stringify(storage.getConfig().enabledConnectors)}`);
         sidebarProvider.postMessage({
           type: "state:onboarding",
+          step: "ai_setup",
+        });
+        break;
+      case "onboarding:setAI": {
+        log.info(`Setting AI provider: ${message.ai.provider}`);
+        await onboarding.saveAIConfig(message.ai, message.apiKey);
+        sidebarProvider.postMessage({
+          type: "state:onboarding",
           step: "configuring",
         });
         break;
+      }
       case "onboarding:configure":
         await onboarding.configure(message.config);
         sidebarProvider.postMessage({
@@ -195,6 +235,78 @@ export function activate(context: vscode.ExtensionContext) {
         });
         break;
       }
+      case "action:setAIConfig": {
+        await storage.saveAIConfig(message.ai);
+        sidebarProvider.postMessage({
+          type: "state:config",
+          config: storage.getConfig(),
+        });
+        break;
+      }
+      case "action:setAIKey": {
+        if (message.apiKey) {
+          await storage.setAIApiKey(message.apiKey);
+        } else {
+          await storage.deleteAIApiKey();
+        }
+        break;
+      }
+      case "action:testAI": {
+        try {
+          await storage.saveAIConfig(message.ai);
+          if (message.apiKey) {
+            await storage.setAIApiKey(message.apiKey);
+          }
+
+          if (message.ai.provider === "cursor") {
+            sidebarProvider.postMessage({
+              type: "state:aiTestResult",
+              success: true,
+              message: "Cursor Chat is always available",
+            });
+            break;
+          }
+
+          const provider = await resolveAIProvider(storage);
+          log.info(`Testing AI provider: ${provider.name} (${provider.id})`);
+
+          const available = await provider.isAvailable();
+          if (!available) {
+            const aiKey = await storage.getAIApiKey();
+            log.info(`AI test: provider=${message.ai.provider}, hasKey=${!!aiKey}`);
+            sidebarProvider.postMessage({
+              type: "state:aiTestResult",
+              success: false,
+              message: "Provider not available. Check your API key and settings.",
+            });
+            break;
+          }
+
+          log.info("AI test: provider available, sending test prompt...");
+          const result = await provider.complete(
+            'Respond with exactly this JSON: {"status":"ok"}'
+          );
+          log.info(`AI test response: ${result.slice(0, 200)}`);
+
+          const parsed = JSON.parse(result);
+          sidebarProvider.postMessage({
+            type: "state:aiTestResult",
+            success: parsed.status === "ok",
+            message: parsed.status === "ok"
+              ? `Connected to ${provider.name} successfully`
+              : "Unexpected response from provider",
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.error(`AI test failed: ${msg}`);
+          sidebarProvider.postMessage({
+            type: "state:aiTestResult",
+            success: false,
+            message: msg,
+          });
+        }
+        break;
+      }
     }
   }
 
@@ -204,6 +316,41 @@ export function activate(context: vscode.ExtensionContext) {
       synthesize(sidebarProvider, storage, ingestion, onboarding);
     }, 3000);
   }
+}
+
+async function resolveAIProvider(
+  storage: StorageLayer
+): Promise<LLMProvider> {
+  const aiConfig = storage.getAIConfig();
+
+  if (aiConfig.provider === "openai") {
+    const apiKey = await storage.getAIApiKey();
+    if (!apiKey) {
+      return new CursorChatProvider(getWorkspacePath());
+    }
+    return new OpenAIProvider({
+      apiKey,
+      baseUrl: aiConfig.openai?.baseUrl,
+      model: aiConfig.openai?.model,
+    });
+  }
+
+  if (aiConfig.provider === "ollama") {
+    return new OllamaProvider({
+      baseUrl: aiConfig.ollama?.baseUrl,
+      model: aiConfig.ollama?.model,
+    });
+  }
+
+  return new CursorChatProvider(getWorkspacePath());
+}
+
+function getWorkspacePath(): string {
+  const folders = vscode.workspace.workspaceFolders;
+  if (folders && folders.length > 0) {
+    return folders[0].uri.fsPath;
+  }
+  return process.env.HOME || process.env.USERPROFILE || ".";
 }
 
 async function synthesize(
@@ -263,18 +410,85 @@ async function synthesize(
     const artifacts = normalize(rawEvents);
     log.info(`Artifacts: ${artifacts.length}`);
 
-    const correlated = correlate(artifacts);
-    const prioritized = prioritize(correlated);
-    log.info(`Task clusters: ${prioritized.length}`);
+    const today = calendarTodayString();
+    const artifactById = new Map(artifacts.map((a) => [a.id, a]));
+    const currentIdList = artifacts.map((a) => a.id);
 
-    const plan = schedule(prioritized, config.workdayMinutes);
-    log.info(
-      `Plan: ${plan.clusters.length} clusters, ${plan.usedMinutes}m used`
-    );
+    const cached = storage.getCachedPlan();
+    let lastFull = storage.getLastFullSynthesisDate();
+    let lastSyncedIds = storage.getLastSyncedArtifactIds();
 
-    storage.cachePlan(plan);
-    sidebar.postMessage({ type: "state:plan", plan });
-    updateStatusBar(plan);
+    // Migrate older installs: plan exists but sync metadata was never written.
+    // Without this, lastSynced stayed empty → full AI every sync → repeated "rules" fallback.
+    if (cached) {
+      if (lastFull === undefined) {
+        await storage.setLastFullSynthesisDate(cached.date);
+        lastFull = cached.date;
+        log.info("Migrated lastFullSynthesisDate from cached plan");
+      }
+      if (lastSyncedIds.length === 0 && currentIdList.length > 0) {
+        await storage.setLastSyncedArtifactIds(currentIdList);
+        lastSyncedIds = currentIdList;
+        log.info("Migrated lastSyncedArtifactIds from current artifacts");
+      }
+    }
+
+    const lastSyncedSet = new Set(lastSyncedIds);
+
+    // Full AI at most once per calendar day — do NOT force it when lastSynced was merely empty.
+    const needsFullAI = !cached || lastFull !== today;
+
+    const aiProvider = await resolveAIProvider(storage);
+
+    if (needsFullAI) {
+      const { clusters, mode } = await aiSynthesize(artifacts, aiProvider, log);
+      log.info(`Synthesis mode: ${mode}, clusters: ${clusters.length}`);
+
+      const plan = schedule(clusters, config.workdayMinutes);
+      plan.synthesisMode = mode;
+      plan.synthesisProvider = config.ai.provider;
+      log.info(
+        `Plan: ${plan.clusters.length} clusters, ${plan.usedMinutes}m used (${mode}, ${aiProvider.name})`
+      );
+
+      await storage.cachePlan(plan);
+      await storage.setLastFullSynthesisDate(today);
+      await storage.setLastSyncedArtifactIds(currentIdList);
+      sidebar.postMessage({ type: "state:plan", plan });
+      updateStatusBar(plan);
+    } else {
+      const newIds = currentIdList.filter((id) => !lastSyncedSet.has(id));
+      if (newIds.length === 0) {
+        log.info("Incremental sync: no new artifacts, keeping cached plan");
+        sidebar.postMessage({ type: "state:plan", plan: cached });
+        updateStatusBar(cached);
+      } else {
+        log.info(
+          `Incremental sync: ${newIds.length} new artifact(s), merging into cached plan`
+        );
+        const previous = pruneAndRefreshClusters(cached.clusters, artifactById);
+        const newArtifacts = artifacts.filter((a) => newIds.includes(a.id));
+        const correlated = correlate(newArtifacts);
+        const newClusters = prioritize(correlated);
+        const merged = mergeByPriorityInsertion(previous, newClusters);
+        const withStatus = applyClusterStatuses(merged, cached.clusters);
+
+        const plan = schedule(withStatus, config.workdayMinutes);
+        // Incremental merge uses rules only for *new* items; keep AI badge unless the cached day was already rules-fallback.
+        plan.synthesisMode =
+          cached.synthesisMode === "rules" ? "rules" : "ai";
+        plan.synthesisProvider =
+          cached.synthesisProvider ?? config.ai.provider;
+
+        await storage.cachePlan(plan);
+        await storage.setLastSyncedArtifactIds(currentIdList);
+        log.info(
+          `Plan (incremental): ${plan.clusters.length} clusters, ${plan.usedMinutes}m used`
+        );
+        sidebar.postMessage({ type: "state:plan", plan });
+        updateStatusBar(plan);
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error(`Synthesis failed: ${msg}`);

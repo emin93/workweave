@@ -134,6 +134,8 @@ export class GitHubConnector implements Connector {
 
     const username = await runGh(["api", "user", "--jq", ".login"]);
 
+    const seen = new Set<string>();
+
     // Fetch PRs requesting your review
     try {
       const raw = await runGh([
@@ -145,17 +147,47 @@ export class GitHubConnector implements Connector {
       if (raw && raw !== "null") {
         const items = JSON.parse(raw) as SearchItem[];
         for (const item of items) {
+          const key = `github-pr-${item.number}-${repoFromUrl(item.repository_url)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
           events.push({
-            id: `github-pr-${item.number}-${repoFromUrl(item.repository_url)}`,
+            id: key,
             connectorId: this.id,
             sourceType: "pr",
-            rawPayload: toPayload(item),
+            rawPayload: toPayload(item, username),
             fetchedAt: now,
           });
         }
       }
     } catch (err) {
       errors.push(`PRs: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Fetch PRs authored by you
+    try {
+      const raw = await runGh([
+        "api",
+        `search/issues?q=is:open+is:pr+author:${username}+archived:false&per_page=25`,
+        "--jq",
+        ".items",
+      ]);
+      if (raw && raw !== "null") {
+        const items = JSON.parse(raw) as SearchItem[];
+        for (const item of items) {
+          const key = `github-pr-${item.number}-${repoFromUrl(item.repository_url)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          events.push({
+            id: key,
+            connectorId: this.id,
+            sourceType: "pr",
+            rawPayload: toPayload(item, username),
+            fetchedAt: now,
+          });
+        }
+      }
+    } catch (err) {
+      errors.push(`Authored PRs: ${err instanceof Error ? err.message : err}`);
     }
 
     // Fetch assigned issues
@@ -173,7 +205,7 @@ export class GitHubConnector implements Connector {
             id: `github-issue-${item.number}-${repoFromUrl(item.repository_url)}`,
             connectorId: this.id,
             sourceType: "issue",
-            rawPayload: toPayload(item),
+            rawPayload: toPayload(item, username),
             fetchedAt: now,
           });
         }
@@ -194,14 +226,21 @@ function repoFromUrl(repositoryUrl: string): string {
   return repositoryUrl.replace("https://api.github.com/repos/", "");
 }
 
-function toPayload(item: SearchItem): Record<string, unknown> {
+function toPayload(
+  item: SearchItem,
+  currentUser?: string
+): Record<string, unknown> {
+  const authorLogin = item.user?.login ?? "unknown";
   return {
     number: item.number,
     title: item.title,
     url: item.html_url,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
-    author: { login: item.user?.login ?? "unknown" },
+    author: { login: authorLogin },
+    isAuthor: currentUser
+      ? authorLogin.toLowerCase() === currentUser.toLowerCase()
+      : false,
     labels: (item.labels ?? []).map((l) =>
       typeof l === "string" ? { name: l } : { name: l.name ?? "" }
     ),

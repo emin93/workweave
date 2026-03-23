@@ -1,4 +1,5 @@
 import type { Artifact, TaskCluster, TaskCategory, ExecutionAction } from "../types";
+import { stableClusterId } from "./cluster-id";
 
 const WEIGHTS = {
   urgency: 0.25,
@@ -8,14 +9,17 @@ const WEIGHTS = {
   blockingFactor: 0.2,
 };
 
+/** Baseline minutes before AI-assist scaling (developer uses Cursor / copilots). */
 const TIME_ESTIMATES: Record<string, number> = {
-  pr: 30,
-  issue_small: 60,
-  issue_medium: 120,
-  slack_message: 10,
-  slack_thread: 15,
-  meeting: 15,
+  pr: 18,
+  issue_small: 28,
+  issue_medium: 55,
+  slack_message: 6,
+  slack_thread: 10,
+  meeting: 12,
 };
+
+const AI_ASSIST_TIME_SCALE = 0.52;
 
 export function prioritize(artifacts: Artifact[]): TaskCluster[] {
   const groups = groupIntoCluster(artifacts);
@@ -59,16 +63,16 @@ function groupIntoCluster(artifacts: Artifact[]): TaskCluster[] {
     clusterMap.set(root, group);
   }
 
-  let clusterIndex = 0;
   const clusters: TaskCluster[] = [];
 
   for (const [, group] of clusterMap) {
     const primary = selectPrimaryArtifact(group);
     const category = inferCategory(group);
     const actions = buildActions(group, category);
+    const ids = group.map((a) => a.id);
 
     clusters.push({
-      id: `cluster-${clusterIndex++}`,
+      id: stableClusterId(ids),
       title: primary.title,
       summary: buildSummary(group),
       category,
@@ -103,9 +107,13 @@ function selectPrimaryArtifact(artifacts: Artifact[]): Artifact {
 
 const INVESTIGATE_PATTERNS = /\b(check out|try out|look into|explore|evaluate|investigate|research|learn about|look at|play with|experiment|spike|poc|proof of concept|compare)\b/i;
 
-function inferCategory(artifacts: Artifact[]): TaskCategory {
+export function inferCategory(artifacts: Artifact[]): TaskCategory {
   const types = new Set(artifacts.map((a) => a.type));
-  if (types.has("pr")) return "review";
+  if (types.has("pr")) {
+    const pr = artifacts.find((a) => a.type === "pr");
+    if (pr?.metadata.isAuthor) return "follow_up";
+    return "review";
+  }
   if (types.has("slack_message") || types.has("slack_thread")) return "respond";
   if (types.has("meeting")) return "meeting_prep";
 
@@ -120,77 +128,157 @@ function inferCategory(artifacts: Artifact[]): TaskCategory {
   return "other";
 }
 
-function buildActions(
+export function buildActions(
   artifacts: Artifact[],
   category: TaskCategory
 ): ExecutionAction[] {
   const actions: ExecutionAction[] = [];
   const primary = selectPrimaryArtifact(artifacts);
 
-  if (category === "review" && primary.type === "pr") {
+  // ── 1. Primary action: the single "do this now" button ──
+
+  switch (category) {
+    case "review":
+      if (primary.type === "pr") {
+        actions.push({
+          id: "primary",
+          type: "review",
+          label: "Review",
+          icon: "git-pull-request",
+          params: {
+            prUrl: primary.sourceUrl,
+            repository: primary.metadata.repository,
+            prNumber: primary.externalId,
+            branch: primary.metadata.headRefName,
+          },
+        });
+      }
+      break;
+
+    case "follow_up":
+      if (primary.type === "pr") {
+        actions.push({
+          id: "primary",
+          type: "review",
+          label: "Check PR",
+          icon: "git-pull-request",
+          params: {
+            prUrl: primary.sourceUrl,
+            repository: primary.metadata.repository,
+            prNumber: primary.externalId,
+            branch: primary.metadata.headRefName,
+          },
+        });
+      }
+      break;
+
+    case "implementation":
+      actions.push({
+        id: "primary",
+        type: "plan",
+        label: "Plan",
+        icon: "lightbulb",
+        params: {
+          issueUrl: primary.sourceUrl,
+          title: primary.title,
+          description: primary.description,
+          externalId: primary.externalId,
+          connectorId: primary.connectorId,
+        },
+      });
+      break;
+
+    case "investigate":
+      actions.push({
+        id: "primary",
+        type: "investigate",
+        label: "Research",
+        icon: "search",
+        params: {
+          issueUrl: primary.sourceUrl,
+          title: primary.title,
+          description: primary.description,
+          externalId: primary.externalId,
+          connectorId: primary.connectorId,
+        },
+      });
+      break;
+
+    case "respond":
+      actions.push({
+        id: "primary",
+        type: "start_work",
+        label: "Reply",
+        icon: "reply",
+        params: { url: primary.sourceUrl },
+      });
+      break;
+
+    default:
+      actions.push({
+        id: "primary",
+        type: "open_url",
+        label: "Open",
+        icon: "link-external",
+        params: { url: primary.sourceUrl },
+      });
+      break;
+  }
+
+  // ── 2. Context links: every related source the developer might need ──
+  // Ordered by likely usefulness: Slack context first (someone pinged you),
+  // then the issue/PR itself, then other links.
+
+  const primaryUrl = primary.sourceUrl;
+  const seenUrls = new Set<string>([primaryUrl]);
+
+  const contextOrder: Record<string, number> = {
+    slack_message: 0,
+    slack_thread: 1,
+    pr: 2,
+    issue: 3,
+    meeting: 4,
+    notion_page: 5,
+    commit: 6,
+  };
+
+  const contextArtifacts = [...artifacts]
+    .filter((a) => a.id !== primary.id && a.sourceUrl && !seenUrls.has(a.sourceUrl))
+    .sort((a, b) => (contextOrder[a.type] ?? 99) - (contextOrder[b.type] ?? 99));
+
+  for (const artifact of contextArtifacts) {
+    if (seenUrls.has(artifact.sourceUrl)) continue;
+    seenUrls.add(artifact.sourceUrl);
+
     actions.push({
-      id: "review",
-      type: "review",
-      label: "Review",
-      icon: "git-pull-request",
+      id: `ctx-${artifact.id}`,
+      type: "context_link",
+      label: contextLabel(artifact),
+      icon: contextIcon(artifact),
       params: {
-        prUrl: primary.sourceUrl,
-        repository: primary.metadata.repository,
-        prNumber: primary.externalId,
-        branch: primary.metadata.headRefName,
+        url: artifact.sourceUrl,
+        source: artifact.connectorId,
+        artifactType: artifact.type,
       },
     });
   }
 
-  if (category === "implementation" && primary.type === "issue") {
+  // If the primary artifact's URL wasn't already used as the primary action's
+  // direct open target, or if there are extra links in metadata, add them.
+  const metadataLinks = (primary.metadata.links as string[]) ?? [];
+  for (const link of metadataLinks) {
+    if (seenUrls.has(link)) continue;
+    seenUrls.add(link);
     actions.push({
-      id: "plan",
-      type: "plan",
-      label: "Plan",
-      icon: "lightbulb",
-      params: {
-        issueUrl: primary.sourceUrl,
-        title: primary.title,
-        description: primary.description,
-        externalId: primary.externalId,
-        connectorId: primary.connectorId,
-      },
+      id: `link-${actions.length}`,
+      type: "context_link",
+      label: linkLabel(link),
+      icon: "link-external",
+      params: { url: link, source: "link", artifactType: "link" },
     });
   }
 
-  if (category === "investigate") {
-    actions.push({
-      id: "investigate",
-      type: "investigate",
-      label: "Research",
-      icon: "search",
-      params: {
-        issueUrl: primary.sourceUrl,
-        title: primary.title,
-        description: primary.description,
-        externalId: primary.externalId,
-        connectorId: primary.connectorId,
-      },
-    });
-  }
-
-  if (category === "respond") {
-    actions.push({
-      id: "start_work",
-      type: "start_work",
-      label: "Reply",
-      icon: "reply",
-      params: { url: primary.sourceUrl },
-    });
-  }
-
-  actions.push({
-    id: "open_url",
-    type: "open_url",
-    label: "Open",
-    icon: "link-external",
-    params: { url: primary.sourceUrl },
-  });
+  // ── 3. Utilities: Done and Snooze ──
 
   actions.push({
     id: "mark_done",
@@ -211,18 +299,74 @@ function buildActions(
   return actions;
 }
 
-function buildSummary(artifacts: Artifact[]): string {
+function contextLabel(artifact: Artifact): string {
+  switch (artifact.type) {
+    case "slack_message":
+    case "slack_thread": {
+      const from = artifact.metadata.from as string | undefined;
+      const isDm = artifact.metadata.isDm as boolean;
+      if (isDm && from) return `DM from ${from}`;
+      if (from) return `${from} in Slack`;
+      return "Slack message";
+    }
+    case "pr":
+      return artifact.metadata.isAuthor ? "Your PR" : "PR";
+    case "issue":
+      return artifact.connectorId === "linear" ? "Linear ticket" : "Issue";
+    case "meeting":
+      return "Meeting";
+    case "notion_page":
+      return "Notion page";
+    case "commit":
+      return "Commit";
+    default:
+      return "Link";
+  }
+}
+
+function contextIcon(artifact: Artifact): string {
+  switch (artifact.connectorId) {
+    case "slack":
+      return "message-square";
+    case "github":
+      return artifact.type === "pr" ? "git-pull-request" : "github";
+    case "linear":
+      return "list-ordered";
+    default:
+      return "link-external";
+  }
+}
+
+function linkLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace("www.", "");
+    if (host.includes("github.com")) return "GitHub";
+    if (host.includes("youtube.com") || host.includes("youtu.be")) return "YouTube";
+    if (host.includes("linear.app")) return "Linear";
+    if (host.includes("slack.com")) return "Slack";
+    return host.split(".")[0];
+  } catch {
+    return "Link";
+  }
+}
+
+export function buildSummary(artifacts: Artifact[]): string {
   if (artifacts.length === 1) {
     const a = artifacts[0];
-    const source =
-      a.connectorId === "github"
-        ? (a.metadata.repository as string) ?? "GitHub"
-        : a.connectorId === "linear"
-          ? "Linear"
-          : a.connectorId === "slack"
-            ? `#${(a.metadata.channel as string) ?? "Slack"}`
-            : a.connectorId;
-    return source;
+    if (a.connectorId === "slack") {
+      const from = (a.metadata.from as string) ?? "someone";
+      const isDm = a.metadata.isDm as boolean;
+      const channel = (a.metadata.channel as string) ?? "Slack";
+      return isDm ? `DM from ${from}` : `${from} in #${channel}`;
+    }
+    if (a.connectorId === "github") {
+      return (a.metadata.repository as string) ?? "GitHub";
+    }
+    if (a.connectorId === "linear") {
+      const project = (a.metadata.project as string) ?? undefined;
+      return project ? `Linear · ${project}` : "Linear";
+    }
+    return a.connectorId;
   }
 
   const sources = [...new Set(artifacts.map((a) => a.connectorId))];
@@ -236,19 +380,19 @@ function estimateTime(artifacts: Artifact[]): number {
       const additions = (a.metadata.additions as number) ?? 0;
       const deletions = (a.metadata.deletions as number) ?? 0;
       const lines = additions + deletions;
-      total += lines > 500 ? 60 : lines > 100 ? 30 : 15;
+      total += lines > 500 ? 38 : lines > 100 ? 22 : 12;
     } else if (a.type === "issue") {
       const estimate = (a.metadata.estimate as number) ?? 0;
       if (estimate > 0) {
-        total += estimate * 30; // Linear points -> minutes
+        total += estimate * 14; // Linear points -> minutes (AI-assisted)
       } else {
         total += TIME_ESTIMATES.issue_small;
       }
     } else {
-      total += TIME_ESTIMATES[a.type] ?? 15;
+      total += TIME_ESTIMATES[a.type] ?? 12;
     }
   }
-  return total;
+  return Math.max(5, Math.round(total * AI_ASSIST_TIME_SCALE));
 }
 
 function scoreCluster(cluster: TaskCluster): TaskCluster {

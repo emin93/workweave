@@ -9,6 +9,8 @@ import type {
 
 const SLACK_SECRET_KEY = "workday.slack.token";
 
+const userCache = new Map<string, string>();
+
 async function slackApi<T>(
   token: string,
   method: string,
@@ -46,6 +48,93 @@ async function slackApi<T>(
       reject(new Error("Slack API timeout"));
     });
   });
+}
+
+async function resolveUserId(
+  token: string,
+  userId: string
+): Promise<string> {
+  if (userCache.has(userId)) return userCache.get(userId)!;
+  try {
+    const resp = await slackApi<UserInfoResponse>(token, "users.info", {
+      user: userId,
+    });
+    const name =
+      resp.user?.profile?.display_name ||
+      resp.user?.real_name ||
+      resp.user?.name ||
+      userId;
+    userCache.set(userId, name);
+    return name;
+  } catch {
+    return userId;
+  }
+}
+
+function cleanSlackText(text: string): string {
+  return text
+    .replace(/<@[A-Z0-9]+>/g, "")
+    .replace(/<([^|>]+)\|([^>]+)>/g, "$2")
+    .replace(/<([^>]+)>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractLinks(text: string): string[] {
+  const links: string[] = [];
+  const linkPattern = /<(https?:\/\/[^|>]+)(?:\|[^>]*)?>/g;
+  let m;
+  while ((m = linkPattern.exec(text)) !== null) {
+    links.push(m[1]);
+  }
+  return links;
+}
+
+function isDmChannel(channelId: string | undefined): boolean {
+  return !!channelId && channelId.startsWith("D");
+}
+
+async function parseMatch(
+  token: string,
+  match: SearchMatch
+): Promise<Record<string, unknown>> {
+  const channelId = match.channel?.id ?? "";
+  const rawChannelName = match.channel?.name ?? "";
+  const isDm = isDmChannel(channelId);
+
+  let channelLabel: string;
+  if (isDm) {
+    channelLabel = "DM";
+  } else if (rawChannelName && !/^[A-Z0-9]+$/.test(rawChannelName)) {
+    channelLabel = rawChannelName;
+  } else {
+    channelLabel = rawChannelName || "unknown";
+  }
+
+  const rawFrom = match.username ?? match.user ?? "someone";
+  let fromDisplay = rawFrom;
+  if (/^[A-Z0-9]{9,}$/.test(rawFrom)) {
+    fromDisplay = await resolveUserId(token, rawFrom);
+  }
+
+  const cleanText = cleanSlackText(match.text ?? "");
+  const links = extractLinks(match.text ?? "");
+
+  return {
+    text: match.text,
+    cleanText,
+    channel: channelLabel,
+    channelId,
+    isDm,
+    from: fromDisplay,
+    ts: match.ts,
+    permalink: match.permalink ?? "",
+    threadTs: match.ts,
+    links,
+  };
 }
 
 export class SlackConnector implements Connector {
@@ -90,11 +179,10 @@ export class SlackConnector implements Connector {
       };
     }
 
-    // Validate the token
     try {
       await slackApi(token, "auth.test");
       return { available: true, authMethod: "token" };
-    } catch (err) {
+    } catch {
       return {
         available: false,
         reason: "Slack token is invalid or expired",
@@ -127,12 +215,11 @@ export class SlackConnector implements Connector {
     const events: RawEvent[] = [];
     const now = new Date().toISOString();
 
-    // Get current user ID
     const authInfo = await slackApi<AuthTestResponse>(token, "auth.test");
     const userId = authInfo.user_id;
 
-    // Search for recent messages mentioning the user (last 24h)
     const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
+
     try {
       const results = await slackApi<SearchResponse>(token, "search.messages", {
         query: `<@${userId}>`,
@@ -144,23 +231,12 @@ export class SlackConnector implements Connector {
       for (const match of results.messages?.matches ?? []) {
         if (Number(match.ts) < oneDayAgo) continue;
 
-        const channelName = match.channel?.name ?? "unknown";
-        const permalink = match.permalink ?? "";
-        const fromUser = match.username ?? match.user ?? "someone";
-
+        const parsed = await parseMatch(token, match);
         events.push({
           id: `slack-mention-${match.iid ?? match.ts}`,
           connectorId: this.id,
           sourceType: "slack_message",
-          rawPayload: {
-            text: match.text,
-            channel: channelName,
-            channelId: match.channel?.id,
-            from: fromUser,
-            ts: match.ts,
-            permalink,
-            threadTs: match.ts,
-          },
+          rawPayload: parsed,
           fetchedAt: now,
         });
       }
@@ -168,7 +244,6 @@ export class SlackConnector implements Connector {
       // search.messages might not be available with all token types
     }
 
-    // Search for DMs sent to the user (last 24h)
     try {
       const results = await slackApi<SearchResponse>(token, "search.messages", {
         query: `to:<@${userId}>`,
@@ -184,22 +259,12 @@ export class SlackConnector implements Connector {
         const id = `slack-dm-${match.iid ?? match.ts}`;
         if (existingIds.has(id)) continue;
 
-        const channelName = match.channel?.name ?? "DM";
-        const fromUser = match.username ?? match.user ?? "someone";
-
+        const parsed = await parseMatch(token, match);
         events.push({
           id,
           connectorId: this.id,
           sourceType: "slack_message",
-          rawPayload: {
-            text: match.text,
-            channel: channelName,
-            channelId: match.channel?.id,
-            from: fromUser,
-            ts: match.ts,
-            permalink: match.permalink ?? "",
-            threadTs: match.ts,
-          },
+          rawPayload: parsed,
           fetchedAt: now,
         });
       }
@@ -210,7 +275,6 @@ export class SlackConnector implements Connector {
     return events;
   }
 
-  /** Called by the "Set Slack Token" command */
   static async promptForToken(
     context: vscode.ExtensionContext
   ): Promise<boolean> {
@@ -230,7 +294,6 @@ export class SlackConnector implements Connector {
 
     if (!token) return false;
 
-    // Validate before saving
     try {
       await slackApi(token, "auth.test");
     } catch (err) {
@@ -253,6 +316,18 @@ interface AuthTestResponse {
   user_id: string;
   team_id: string;
   user: string;
+}
+
+interface UserInfoResponse {
+  ok: boolean;
+  user?: {
+    name?: string;
+    real_name?: string;
+    profile?: {
+      display_name?: string;
+      real_name?: string;
+    };
+  };
 }
 
 interface SearchResponse {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePlanStore } from "../../stores/planStore";
 import { postMessage } from "../../hooks/useVSCode";
 import {
@@ -13,8 +13,12 @@ import {
   ExternalLink,
   AlertTriangle,
   KeyRound,
+  Sparkles,
+  MessageCircle,
+  Cpu,
+  XCircle,
 } from "lucide-react";
-import type { ConnectorInfo } from "../../../../src/types";
+import type { ConnectorInfo, AIProviderType, AIConfig } from "../../../../src/types";
 
 const CONNECTOR_ICONS: Record<string, React.ReactNode> = {
   github: <Github size={20} />,
@@ -31,6 +35,8 @@ export function OnboardingWizard() {
       return <WelcomeStep />;
     case "selecting":
       return <SelectStep />;
+    case "ai_setup":
+      return <AISetupStep />;
     case "configuring":
       return <ConfigureStep />;
     case "validating":
@@ -233,6 +239,252 @@ function SelectStep() {
         disabled={selected.size === 0}
       >
         Continue with {selected.size} source{selected.size !== 1 ? "s" : ""}
+      </button>
+    </div>
+  );
+}
+
+const AI_PROVIDERS: {
+  id: AIProviderType;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  needsConfig: boolean;
+}[] = [
+  {
+    id: "cursor",
+    name: "Cursor Chat",
+    description: "Zero config — uses Cursor's built-in AI to synthesize your workday",
+    icon: <MessageCircle size={20} />,
+    needsConfig: false,
+  },
+  {
+    id: "openai",
+    name: "API Key",
+    description: "OpenAI or any compatible API (Anthropic, Groq, etc.)",
+    icon: <KeyRound size={20} />,
+    needsConfig: true,
+  },
+  {
+    id: "ollama",
+    name: "Ollama",
+    description: "Run locally with Ollama — fully private, no API key needed",
+    icon: <Cpu size={20} />,
+    needsConfig: true,
+  },
+];
+
+function AISetupStep() {
+  const { aiTestResult } = usePlanStore();
+
+  const [provider, setProvider] = useState<AIProviderType>("cursor");
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
+  const [ollamaUrl, setOllamaUrl] = useState("");
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    if (aiTestResult) setTesting(false);
+  }, [aiTestResult]);
+
+  const buildConfig = (): AIConfig => ({
+    provider,
+    openai:
+      provider === "openai"
+        ? { baseUrl: baseUrl || undefined, model: model || undefined }
+        : undefined,
+    ollama:
+      provider === "ollama"
+        ? { baseUrl: ollamaUrl || undefined, model: model || undefined }
+        : undefined,
+  });
+
+  const testConnection = () => {
+    setTesting(true);
+    postMessage({
+      type: "action:testAI",
+      ai: buildConfig(),
+      apiKey: provider === "openai" && apiKey ? apiKey : undefined,
+    });
+  };
+
+  const canContinue = () => {
+    if (provider === "cursor") return true;
+    if (provider === "openai") return !!apiKey;
+    if (provider === "ollama") return true;
+    return false;
+  };
+
+  const handleContinue = () => {
+    postMessage({
+      type: "onboarding:setAI",
+      ai: buildConfig(),
+      apiKey: provider === "openai" && apiKey ? apiKey : undefined,
+    });
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles size={16} className="text-yellow-400" />
+          <h2 className="text-sm font-semibold">AI Synthesis</h2>
+        </div>
+        <p className="text-xs text-vscode-descFg">
+          Choose how to power the AI that synthesizes your workday. This is what
+          turns raw signals into a smart, prioritized plan.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {AI_PROVIDERS.map((p) => (
+          <button
+            key={p.id}
+            className={`card w-full text-left transition-colors cursor-pointer bg-transparent border ${
+              provider === p.id
+                ? "border-vscode-link"
+                : "border-vscode-border"
+            }`}
+            onClick={() => setProvider(p.id)}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={
+                  provider === p.id
+                    ? "text-vscode-link"
+                    : "text-vscode-descFg"
+                }
+              >
+                {p.icon}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium">{p.name}</div>
+                <div className="text-[10px] text-vscode-descFg">
+                  {p.description}
+                </div>
+              </div>
+              {provider === p.id && (
+                <CheckCircle2 size={16} className="text-vscode-link shrink-0" />
+              )}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {provider === "openai" && (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium block mb-1">API Key</label>
+            <input
+              type="password"
+              className="input"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-..."
+            />
+            <p className="text-[10px] text-vscode-descFg mt-0.5">
+              Stored securely in your system keychain
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1">
+              Base URL <span className="text-vscode-descFg">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.openai.com"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1">
+              Model <span className="text-vscode-descFg">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="gpt-4o-mini"
+            />
+          </div>
+        </div>
+      )}
+
+      {provider === "ollama" && (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium block mb-1">
+              Ollama URL <span className="text-vscode-descFg">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={ollamaUrl}
+              onChange={(e) => setOllamaUrl(e.target.value)}
+              placeholder="http://localhost:11434"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium block mb-1">
+              Model <span className="text-vscode-descFg">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="llama3.2"
+            />
+          </div>
+        </div>
+      )}
+
+      {provider !== "cursor" && (
+        <>
+          <button
+            className="btn-secondary w-full flex items-center justify-center gap-1"
+            onClick={testConnection}
+            disabled={testing || (provider === "openai" && !apiKey)}
+          >
+            {testing ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Testing...
+              </>
+            ) : (
+              "Test Connection"
+            )}
+          </button>
+
+          {aiTestResult && !testing && (
+            <div
+              className={`flex items-center gap-2 text-xs p-2 rounded ${
+                aiTestResult.success
+                  ? "bg-green-500/10 text-green-400"
+                  : "bg-red-500/10 text-red-400"
+              }`}
+            >
+              {aiTestResult.success ? (
+                <CheckCircle2 size={14} />
+              ) : (
+                <XCircle size={14} />
+              )}
+              <span>{aiTestResult.message}</span>
+            </div>
+          )}
+        </>
+      )}
+
+      <button
+        className="btn-primary w-full"
+        onClick={handleContinue}
+        disabled={!canContinue()}
+      >
+        Continue
       </button>
     </div>
   );

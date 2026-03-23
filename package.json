@@ -40,6 +40,11 @@
         "command": "workday.setSlackToken",
         "title": "Set Slack Token",
         "category": "Workday"
+      },
+      {
+        "command": "workday.setAIKey",
+        "title": "Set AI API Key",
+        "category": "Workday"
       }
     ],
     "viewsContainers": {

@@ -10,8 +10,21 @@ import {
   Calendar,
   AlertCircle,
   Inbox,
+  Sparkles,
+  Cpu,
 } from "lucide-react";
-import type { TaskCluster } from "../../../../src/types";
+import type { TaskCluster, AIProviderType } from "../../../../src/types";
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: "API",
+  cursor: "Cursor",
+  ollama: "Ollama",
+};
+
+function providerLabel(provider?: AIProviderType): string {
+  if (!provider) return "AI";
+  return PROVIDER_LABELS[provider] ?? "AI";
+}
 
 export function PlanView() {
   const { plan, syncing, error } = usePlanStore();
@@ -76,9 +89,34 @@ function PlanHeader() {
           </button>
         </div>
       </div>
-      <div className="text-[10px] text-vscode-descFg">
-        {today}
-        {plannedHours && ` \u2014 ${plannedHours}`}
+      <div className="flex items-center gap-2 text-[10px] text-vscode-descFg">
+        <span>
+          {today}
+          {plannedHours && ` \u2014 ${plannedHours}`}
+        </span>
+        {plan?.synthesisMode && (
+          <span
+            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
+              plan.synthesisMode === "ai"
+                ? "bg-yellow-500/15 text-yellow-400"
+                : "bg-vscode-badge-bg text-vscode-badge-fg"
+            }`}
+            title={
+              plan.synthesisMode === "ai"
+                ? `Synthesized with AI (${providerLabel(plan.synthesisProvider)})`
+                : "Synthesized with rules (fallback)"
+            }
+          >
+            {plan.synthesisMode === "ai" ? (
+              <Sparkles size={8} />
+            ) : (
+              <Cpu size={8} />
+            )}
+            {plan.synthesisMode === "ai"
+              ? providerLabel(plan.synthesisProvider)
+              : "Rules"}
+          </span>
+        )}
       </div>
     </div>
   );

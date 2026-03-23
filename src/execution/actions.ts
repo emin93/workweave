@@ -87,6 +87,7 @@ export class ExecutionEngine {
         await this.executeInvestigate(cluster);
         break;
       case "open_url":
+      case "context_link":
         await this.openUrl(action);
         break;
       case "mark_done":

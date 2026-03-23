@@ -7,6 +7,11 @@ import type {
   ExtensionMessage,
 } from "../../../src/types";
 
+interface AITestResult {
+  success: boolean;
+  message: string;
+}
+
 interface PlanState {
   plan: WorkdayPlan | null;
   config: UserConfig | null;
@@ -17,6 +22,7 @@ interface PlanState {
   detectedConnectors: ConnectorInfo[];
   view: "plan" | "onboarding" | "settings";
   initialized: boolean;
+  aiTestResult: AITestResult | null;
 
   handleMessage: (message: ExtensionMessage) => void;
   setView: (view: "plan" | "onboarding" | "settings") => void;
@@ -32,6 +38,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   detectedConnectors: [],
   view: "onboarding",
   initialized: false,
+  aiTestResult: null,
 
   handleMessage: (message: ExtensionMessage) => {
     switch (message.type) {
@@ -46,9 +53,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       case "state:config": {
         const isSettingsOpen = get().view === "settings";
         set({ config: message.config });
-        // If settings view is open, keep it open (config was requested by settings)
         if (isSettingsOpen) break;
-        // If onboarding is complete but we haven't initialized yet, go to plan view
         if (message.config.onboardingState === "complete") {
           set({ view: "plan", initialized: true });
         }
@@ -73,8 +78,16 @@ export const usePlanStore = create<PlanState>((set, get) => ({
           set({ detectedConnectors: message.detectedConnectors });
         }
         break;
+      case "state:aiTestResult":
+        set({
+          aiTestResult: {
+            success: message.success,
+            message: message.message,
+          },
+        });
+        break;
     }
   },
 
-  setView: (view) => set({ view }),
+  setView: (view) => set({ view, aiTestResult: null }),
 }));

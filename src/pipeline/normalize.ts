@@ -43,6 +43,7 @@ function normalizeGitHub(event: RawEvent): Artifact | null {
       updatedAt: payload.updatedAt as string,
       metadata: {
         author: (payload.author as Record<string, unknown>)?.login,
+        isAuthor: payload.isAuthor,
         labels: ((payload.labels as Array<Record<string, unknown>>) ?? []).map(
           (l) => l.name
         ),
@@ -134,14 +135,22 @@ function normalizeSlack(event: RawEvent): Artifact | null {
   const payload = event.rawPayload as Record<string, unknown>;
 
   if (event.sourceType === "slack_message") {
-    const text = (payload.text as string) ?? "";
+    const rawText = (payload.text as string) ?? "";
+    const cleanText = (payload.cleanText as string) ?? rawText;
     const channel = (payload.channel as string) ?? "unknown";
+    const isDm = (payload.isDm as boolean) ?? false;
     const from = (payload.from as string) ?? "someone";
     const permalink = (payload.permalink as string) ?? "";
     const ts = payload.ts as string;
+    const links = (payload.links as string[]) ?? [];
 
-    const truncatedText =
-      text.length > 120 ? text.slice(0, 120) + "..." : text;
+    const preview =
+      cleanText.length > 100 ? cleanText.slice(0, 100) + "..." : cleanText;
+
+    const locationLabel = isDm ? `DM from ${from}` : `#${channel}`;
+    const title = preview
+      ? `${preview}`
+      : `Message from ${from}`;
 
     const createdAt = ts
       ? new Date(Number(ts) * 1000).toISOString()
@@ -150,8 +159,8 @@ function normalizeSlack(event: RawEvent): Artifact | null {
     return {
       id: event.id,
       type: "slack_message" as ArtifactType,
-      title: `Slack: ${from} in #${channel}`,
-      description: truncatedText,
+      title,
+      description: `${from} in ${locationLabel}`,
       sourceUrl: permalink,
       connectorId: "slack",
       externalId: ts ?? event.id,
@@ -161,8 +170,10 @@ function normalizeSlack(event: RawEvent): Artifact | null {
       metadata: {
         channel,
         channelId: payload.channelId,
+        isDm,
         from,
         threadTs: payload.threadTs,
+        links,
       },
       relatedArtifactIds: [],
     };

@@ -63,4 +63,22 @@ body {
       border border-vscode-inputBorder
       outline-none focus:border-vscode-link;
   }
+
+  /*
+   * Native <select> often ignores Tailwind/theme on the closed control (WebKit/Chromium),
+   * causing light-on-light or dark-on-dark in the webview. Force VS Code token colors.
+   */
+  select.input {
+    color: var(--vscode-input-foreground);
+    background-color: var(--vscode-input-background);
+    border-color: var(--vscode-input-border);
+  }
+
+  select.input option {
+    color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+    background-color: var(
+      --vscode-dropdown-background,
+      var(--vscode-input-background)
+    );
+  }
 }

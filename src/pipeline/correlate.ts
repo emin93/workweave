@@ -19,10 +19,14 @@ export function correlate(artifacts: Artifact[]): Artifact[] {
     }
   }
 
+  const sourceUrlToId = new Map<string, string>();
+  for (const a of artifacts) {
+    if (a.sourceUrl) sourceUrlToId.set(a.sourceUrl, a.id);
+  }
+
   const correlated = artifacts.map((artifact) => {
     const related = new Set(artifact.relatedArtifactIds);
 
-    // Match by identifiers found in title/description
     const textToSearch = [
       artifact.title,
       artifact.description ?? "",
@@ -32,12 +36,10 @@ export function correlate(artifacts: Artifact[]): Artifact[] {
     for (const other of artifacts) {
       if (other.id === artifact.id) continue;
 
-      // Check if this artifact's text mentions the other's external ID
       if (textMentionsId(textToSearch, other)) {
         related.add(other.id);
       }
 
-      // Check if the other artifact's text mentions this one
       const otherText = [
         other.title,
         other.description ?? "",
@@ -46,6 +48,23 @@ export function correlate(artifacts: Artifact[]): Artifact[] {
 
       if (textMentionsId(otherText, artifact)) {
         related.add(other.id);
+      }
+    }
+
+    const embeddedLinks = (artifact.metadata.links as string[]) ?? [];
+    for (const link of embeddedLinks) {
+      const matchedId = sourceUrlToId.get(link);
+      if (matchedId && matchedId !== artifact.id) {
+        related.add(matchedId);
+      }
+      for (const other of artifacts) {
+        if (other.id === artifact.id) continue;
+        if (other.sourceUrl && link.includes(other.sourceUrl)) {
+          related.add(other.id);
+        }
+        if (other.sourceUrl && other.sourceUrl.includes(link)) {
+          related.add(other.id);
+        }
       }
     }
 

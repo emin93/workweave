@@ -11,6 +11,10 @@ import {
   ChevronRight,
   Info,
   Search,
+  MessageSquare,
+  ListOrdered,
+  Github,
+  Link,
 } from "lucide-react";
 import type {
   TaskCluster,
@@ -19,14 +23,23 @@ import type {
   TaskCategory,
 } from "../../../../src/types";
 
-const ACTION_ICONS: Record<ActionType, React.ReactNode> = {
+const ACTION_ICONS: Record<string, React.ReactNode> = {
   review: <GitPullRequest size={12} />,
   plan: <Lightbulb size={12} />,
   investigate: <Search size={12} />,
   open_url: <ExternalLink size={12} />,
+  context_link: <ExternalLink size={12} />,
   mark_done: <Check size={12} />,
   snooze: <Clock size={12} />,
   start_work: <Reply size={12} />,
+};
+
+const CONTEXT_ICONS: Record<string, React.ReactNode> = {
+  "message-square": <MessageSquare size={12} />,
+  "git-pull-request": <GitPullRequest size={12} />,
+  "list-ordered": <ListOrdered size={12} />,
+  github: <Github size={12} />,
+  "link-external": <ExternalLink size={12} />,
 };
 
 const CATEGORY_BADGE: Record<TaskCategory, { label: string; color: string }> = {
@@ -52,14 +65,10 @@ export function TaskCard({ cluster, index }: TaskCardProps) {
 
   const badge = CATEGORY_BADGE[cluster.category] ?? CATEGORY_BADGE.other;
 
-  const primaryActions = cluster.actions.filter(
-    (a) =>
-      a.type !== "mark_done" && a.type !== "snooze" && a.type !== "open_url"
-  );
-  const secondaryActions = cluster.actions.filter(
-    (a) =>
-      a.type === "open_url" || a.type === "mark_done" || a.type === "snooze"
-  );
+  const primaryAction = cluster.actions.find((a) => a.id === "primary");
+  const contextLinks = cluster.actions.filter((a) => a.type === "context_link");
+  const doneAction = cluster.actions.find((a) => a.type === "mark_done");
+  const snoozeAction = cluster.actions.find((a) => a.type === "snooze");
 
   return (
     <div
@@ -133,55 +142,76 @@ export function TaskCard({ cluster, index }: TaskCardProps) {
         </button>
       </div>
 
-      {/* Action buttons */}
+      {/* Actions: primary + context links + utilities */}
       {!isDone && !isSnoozed && (
-        <div className="flex items-center gap-1 mt-2">
-          {primaryActions.map((action) => (
+        <div className="mt-2 space-y-1.5">
+          {/* Primary action — the one thing to do */}
+          {primaryAction && (
             <button
-              key={action.id}
-              className="btn-primary flex items-center gap-1"
+              className="btn-primary w-full flex items-center justify-center gap-1.5"
               onClick={() =>
                 postMessage({
                   type: "action:execute",
                   clusterId: cluster.id,
-                  actionId: action.id,
+                  actionId: primaryAction.id,
                 })
               }
             >
-              {ACTION_ICONS[action.type]}
-              {action.label}
+              {ACTION_ICONS[primaryAction.type]}
+              {primaryAction.label}
             </button>
-          ))}
-          <div className="flex-1" />
-          {secondaryActions.map((action) => (
-            <button
-              key={action.id}
-              className="btn-ghost flex items-center gap-1"
-              onClick={() => {
-                if (action.type === "mark_done") {
+          )}
+
+          {/* Context links + utilities row */}
+          <div className="flex items-center gap-1">
+            {contextLinks.map((link) => (
+              <button
+                key={link.id}
+                className="btn-ghost flex items-center gap-1 text-[10px]"
+                onClick={() =>
+                  postMessage({
+                    type: "action:execute",
+                    clusterId: cluster.id,
+                    actionId: link.id,
+                  })
+                }
+                title={link.label}
+              >
+                {CONTEXT_ICONS[link.icon ?? "link-external"] ?? <ExternalLink size={12} />}
+                <span className="max-w-[80px] truncate">{link.label}</span>
+              </button>
+            ))}
+            <div className="flex-1" />
+            {doneAction && (
+              <button
+                className="btn-ghost"
+                onClick={() =>
                   postMessage({
                     type: "action:markDone",
                     clusterId: cluster.id,
-                  });
-                } else if (action.type === "snooze") {
+                  })
+                }
+                title="Done"
+              >
+                <Check size={12} />
+              </button>
+            )}
+            {snoozeAction && (
+              <button
+                className="btn-ghost"
+                onClick={() =>
                   postMessage({
                     type: "action:snooze",
                     clusterId: cluster.id,
                     hours: 2,
-                  });
-                } else {
-                  postMessage({
-                    type: "action:execute",
-                    clusterId: cluster.id,
-                    actionId: action.id,
-                  });
+                  })
                 }
-              }}
-              title={action.label}
-            >
-              {ACTION_ICONS[action.type]}
-            </button>
-          ))}
+                title="Snooze 2h"
+              >
+                <Clock size={12} />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
