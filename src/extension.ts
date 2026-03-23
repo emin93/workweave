@@ -160,6 +160,10 @@ export function activate(context: vscode.ExtensionContext) {
       case "action:synthesize":
         await synthesize(sidebarProvider, storage, ingestion, onboarding);
         break;
+      case "action:resynthesize":
+        await storage.clearCachedPlan();
+        await synthesize(sidebarProvider, storage, ingestion, onboarding, true);
+        break;
       case "action:execute":
         await execution.execute(
           message.clusterId,
@@ -357,11 +361,21 @@ async function synthesize(
   sidebar: SidebarProvider,
   storage: StorageLayer,
   ingestion: IngestionOrchestrator,
-  onboarding: OnboardingManager
+  onboarding: OnboardingManager,
+  force = false
 ) {
   const config = storage.getConfig();
   if (config.onboardingState !== "complete") {
     return;
+  }
+
+  if (!force) {
+    const cached = storage.getCachedPlan();
+    if (cached) {
+      sidebar.postMessage({ type: "state:plan", plan: cached });
+      updateStatusBar(cached);
+      return;
+    }
   }
 
   sidebar.postMessage({ type: "state:syncing", syncing: true });
