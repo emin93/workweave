@@ -162,6 +162,7 @@ export type ExtensionMessage =
 
 export type WebviewMessage =
   | { type: "action:synthesize" }
+  | { type: "action:resynthesize" }
   | { type: "action:execute"; clusterId: string; actionId: string }
   | { type: "action:snooze"; clusterId: string; hours: number }
   | { type: "action:markDone"; clusterId: string }

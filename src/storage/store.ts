@@ -51,6 +51,10 @@ export class StorageLayer {
     await this._globalState.update(KEYS.plan, plan);
   }
 
+  async clearCachedPlan(): Promise<void> {
+    await this._globalState.update(KEYS.plan, undefined);
+  }
+
   async updatePlan(
     updater: (plan: WorkdayPlan) => WorkdayPlan
   ): Promise<WorkdayPlan | null> {

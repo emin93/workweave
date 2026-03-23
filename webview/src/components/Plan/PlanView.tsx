@@ -5,6 +5,7 @@ import { TaskGroup } from "./TaskGroup";
 import { TaskCard } from "../TaskCard/TaskCard";
 import {
   RefreshCw,
+  RotateCcw,
   Settings,
   Loader2,
   Calendar,
@@ -64,6 +65,16 @@ function PlanHeader() {
               <RefreshCw size={14} />
             )}
           </button>
+          {plan && (
+            <button
+              className="btn-ghost"
+              onClick={() => postMessage({ type: "action:resynthesize" })}
+              disabled={syncing}
+              title="Reset Today"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
           <button
             className="btn-ghost"
             onClick={() => {
