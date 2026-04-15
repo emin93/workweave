@@ -1,7 +1,7 @@
 {
   "name": "workweave",
   "description": "CLI tool that weaves scattered developer signals into a focused, prioritized workday plan",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "homepage": "https://emin93.github.io/workweave/",
   "repository": {
