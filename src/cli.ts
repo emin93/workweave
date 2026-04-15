@@ -9,31 +9,37 @@ import { correlate } from "./pipeline/correlate";
 import { prioritize } from "./pipeline/prioritize";
 import { schedule } from "./pipeline/schedule";
 import { aiSynthesize } from "./pipeline/ai-synthesize";
-import { OpenAIProvider, OllamaProvider, type LLMProvider } from "./ai/provider";
+import { OpenAIProvider, type LLMProvider } from "./ai/provider";
+import { loadLocalEnv } from "./env";
+import { runSetup } from "./setup";
 
 interface CliOptions {
-  command: "detect" | "synth";
+  command: "detect" | "setup" | "synth";
   connectors: string[];
   workdayMinutes: number;
-  ai: "none" | "openai" | "ollama";
+  ai: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
   const args = [...argv];
-  const command = (args.shift() as CliOptions["command"] | undefined) ?? "synth";
+  const first = args[0];
+  const command =
+    first === "detect" || first === "setup" || first === "synth"
+      ? (args.shift() as CliOptions["command"])
+      : "synth";
 
   const opts: CliOptions = {
     command,
     connectors: ["github"],
     workdayMinutes: 480,
-    ai: "none",
+    ai: false,
   };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--connectors") opts.connectors = (args[++i] ?? "github").split(",").map((x) => x.trim()).filter(Boolean);
     else if (a === "--workday-minutes") opts.workdayMinutes = Number(args[++i] ?? "480");
-    else if (a === "--ai") opts.ai = ((args[++i] ?? "none") as CliOptions["ai"]);
+    else if (a === "--ai") opts.ai = true;
     else if (a === "-h" || a === "--help") {
       printHelp();
       process.exit(0);
@@ -47,17 +53,15 @@ function printHelp() {
   console.log(`Workday Synthesizer CLI
 
 Usage:
+  workday setup
   workday detect [--connectors github,linear,slack]
-  workday synth [--connectors github,linear,slack] [--workday-minutes 480] [--ai none|openai|ollama]
+  workday synth [--connectors github,linear,slack] [--workday-minutes 480] [--ai]
 
 Environment variables:
+  OPENAI_API_KEY          API key used when --ai is enabled
+  OPENAI_MODEL            Optional model (default: gpt-4o-mini)
   LINEAR_API_KEY          Linear personal API key (for linear connector)
   SLACK_USER_TOKEN        Slack user token xoxp-... (for slack connector)
-  OPENAI_API_KEY          API key when --ai openai
-  OPENAI_BASE_URL         Optional OpenAI-compatible base URL
-  OPENAI_MODEL            Optional model (default: gpt-4o-mini)
-  OLLAMA_BASE_URL         Optional (default: http://localhost:11434)
-  OLLAMA_MODEL            Optional model (default: llama3.2)
 `);
 }
 
@@ -69,36 +73,37 @@ function buildRegistry(): ConnectorRegistry {
   return registry;
 }
 
-async function resolveProvider(ai: CliOptions["ai"]): Promise<LLMProvider | null> {
-  if (ai === "openai") {
-    const key = process.env.OPENAI_API_KEY;
-    if (!key) throw new Error("OPENAI_API_KEY is required when --ai openai");
-    return new OpenAIProvider({
-      apiKey: key,
-      baseUrl: process.env.OPENAI_BASE_URL,
-      model: process.env.OPENAI_MODEL,
-    });
+async function resolveProvider(useAi: boolean): Promise<LLMProvider | null> {
+  if (!useAi) return null;
+
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) {
+    throw new Error(
+      "OPENAI_API_KEY is required when --ai is enabled. Run `workday setup` first."
+    );
   }
 
-  if (ai === "ollama") {
-    return new OllamaProvider({
-      baseUrl: process.env.OLLAMA_BASE_URL,
-      model: process.env.OLLAMA_MODEL,
-    });
-  }
-
-  return null;
+  return new OpenAIProvider({
+    apiKey: key,
+    model: process.env.OPENAI_MODEL,
+  });
 }
+
+loadLocalEnv();
 
 async function run() {
   const opts = parseArgs(process.argv.slice(2));
-
-  if (!["detect", "synth"].includes(opts.command)) {
+  if (!["detect", "setup", "synth"].includes(opts.command)) {
     printHelp();
     process.exit(1);
   }
 
   const registry = buildRegistry();
+
+  if (opts.command === "setup") {
+    await runSetup(registry);
+    return;
+  }
 
   if (opts.command === "detect") {
     const infos = await registry.detectAll();
@@ -124,7 +129,7 @@ async function run() {
 
   const plan = schedule(clusters, opts.workdayMinutes);
   plan.synthesisMode = synthesisMode;
-  plan.synthesisProvider = provider?.id as "openai" | "ollama" | undefined;
+  plan.synthesisProvider = provider?.id as "openai" | undefined;
 
   console.log(
     JSON.stringify(

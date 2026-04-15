@@ -14,7 +14,7 @@ Workday Synthesizer is now a **CLI-first tool** that turns scattered developer s
 - Normalizes + correlates related items
 - Prioritizes with urgency / importance / social pressure / staleness / blocking factors
 - Schedules work into your workday budget
-- Optionally uses AI (OpenAI-compatible or Ollama) for clustering/titling/prioritization
+- Optionally uses OpenAI for clustering, titling, and prioritization
 
 ## Install
 
@@ -22,6 +22,19 @@ Workday Synthesizer is now a **CLI-first tool** that turns scattered developer s
 npm install
 npm run build
 ```
+
+## Setup
+
+Run the interactive setup:
+
+```bash
+node dist/cli.js setup
+```
+
+This keeps setup minimal:
+
+- GitHub via `gh auth login`
+- OpenAI via `OPENAI_API_KEY` stored in a local `.env` file
 
 Run from source:
 
@@ -43,6 +56,12 @@ node dist/cli.js synth --connectors github
 node dist/cli.js detect --connectors github,linear,slack
 ```
 
+### Run setup
+
+```bash
+node dist/cli.js setup
+```
+
 ### Synthesize a workday plan (rules)
 
 ```bash
@@ -52,20 +71,15 @@ node dist/cli.js synth --connectors github,linear,slack --workday-minutes 480
 ### Synthesize with AI
 
 ```bash
-OPENAI_API_KEY=... node dist/cli.js synth --connectors github,linear --ai openai
-# or
-node dist/cli.js synth --connectors github --ai ollama
+node dist/cli.js synth --connectors github,linear --ai
 ```
 
 ## Environment variables
 
+- `OPENAI_API_KEY`: required for `--ai`
+- `OPENAI_MODEL`: optional model override
 - `LINEAR_API_KEY`: Linear personal API key (for Linear connector)
 - `SLACK_USER_TOKEN`: Slack user token (for Slack connector)
-- `OPENAI_API_KEY`: required for `--ai openai`
-- `OPENAI_BASE_URL`: optional OpenAI-compatible endpoint
-- `OPENAI_MODEL`: optional model override
-- `OLLAMA_BASE_URL`: optional (default `http://localhost:11434`)
-- `OLLAMA_MODEL`: optional model override
 
 ## JSON output
 

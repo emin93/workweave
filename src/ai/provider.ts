@@ -10,18 +10,12 @@ export interface LLMProvider {
 
 export interface OpenAIConfig {
   apiKey: string;
-  baseUrl?: string;
-  model?: string;
-}
-
-export interface OllamaConfig {
-  baseUrl?: string;
   model?: string;
 }
 
 export class OpenAIProvider implements LLMProvider {
   id = "openai";
-  name = "OpenAI-compatible API";
+  name = "OpenAI API";
 
   constructor(private config: OpenAIConfig) {}
 
@@ -30,9 +24,8 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async complete(prompt: string): Promise<string> {
-    const baseUrl = this.config.baseUrl || "https://api.openai.com";
     const model = this.config.model || "gpt-4o-mini";
-    const url = new URL("/v1/chat/completions", baseUrl);
+    const url = new URL("/v1/chat/completions", "https://api.openai.com");
 
     const body = JSON.stringify({
       model,
@@ -56,54 +49,6 @@ export class OpenAIProvider implements LLMProvider {
     }).then((raw) => {
       const parsed = JSON.parse(raw);
       return parsed.choices?.[0]?.message?.content ?? "";
-    });
-  }
-}
-
-export class OllamaProvider implements LLMProvider {
-  id = "ollama";
-  name = "Ollama";
-
-  constructor(private config: OllamaConfig = {}) {}
-
-  async isAvailable(): Promise<boolean> {
-    try {
-      const baseUrl = this.config.baseUrl || "http://localhost:11434";
-      const url = new URL("/api/tags", baseUrl);
-      await httpRequest({
-        hostname: url.hostname,
-        port: url.port || 11434,
-        path: url.pathname,
-        method: "GET",
-        headers: {},
-        protocol: url.protocol,
-        timeoutMs: 3_000,
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async complete(prompt: string): Promise<string> {
-    const baseUrl = this.config.baseUrl || "http://localhost:11434";
-    const model = this.config.model || "llama3.2";
-    const url = new URL("/api/generate", baseUrl);
-
-    const body = JSON.stringify({ model, prompt, stream: false, format: "json" });
-
-    return httpRequest({
-      hostname: url.hostname,
-      port: url.port || 11434,
-      path: url.pathname,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      protocol: url.protocol,
-      body,
-      timeoutMs: 60_000,
-    }).then((raw) => {
-      const parsed = JSON.parse(raw);
-      return parsed.response ?? "";
     });
   }
 }
