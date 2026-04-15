@@ -19,14 +19,14 @@ Workday Synthesizer is now a **CLI-first tool** that turns scattered developer s
 ## Install
 
 ```bash
-pnpm install
-pnpm run build
+npm install
+npm run build
 ```
 
 Run from source:
 
 ```bash
-pnpm run dev -- synth --connectors github
+npm run dev -- synth --connectors github
 ```
 
 Run built CLI:
