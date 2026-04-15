@@ -1,5 +1,6 @@
 import * as https from "https";
 import * as http from "http";
+import { existsSync } from "fs";
 
 export interface LLMProvider {
   id: string;
@@ -97,6 +98,44 @@ export class AnthropicProvider implements LLMProvider {
         ?.find((b) => b.type === "text");
       return textBlock?.text ?? "";
     });
+  }
+}
+
+export class LlamaCppProvider implements LLMProvider {
+  id = "local";
+  name = "Local model (Qwen2.5-1.5B)";
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _llama: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _model: any = null;
+
+  constructor(private readonly _modelPath: string) {}
+
+  async isAvailable(): Promise<boolean> {
+    return existsSync(this._modelPath);
+  }
+
+  private async _load(): Promise<void> {
+    if (this._model) return;
+    // Dynamic import so the package is only loaded when actually used.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const llama = require("node-llama-cpp");
+    this._llama = await llama.getLlama({ gpu: false });
+    this._model = await this._llama.loadModel({ modelPath: this._modelPath });
+  }
+
+  async complete(prompt: string): Promise<string> {
+    await this._load();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { LlamaChatSession } = require("node-llama-cpp");
+    const context = await this._model.createContext({ contextSize: 4096 });
+    const session = new LlamaChatSession({
+      contextSequence: context.getSequence(),
+    });
+    const response: string = await session.prompt(prompt);
+    await context.dispose();
+    return response;
   }
 }
 

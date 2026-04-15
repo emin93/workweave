@@ -9,7 +9,8 @@ import { correlate } from "./pipeline/correlate";
 import { prioritize } from "./pipeline/prioritize";
 import { schedule } from "./pipeline/schedule";
 import { aiSynthesize } from "./pipeline/ai-synthesize";
-import { OpenAIProvider, AnthropicProvider, type LLMProvider } from "./ai/provider";
+import { OpenAIProvider, AnthropicProvider, LlamaCppProvider, type LLMProvider } from "./ai/provider";
+import { modelExists, modelPath } from "./ai/local";
 import { loadLocalEnv } from "./env";
 import { runSetup } from "./setup";
 
@@ -18,7 +19,7 @@ interface CliOptions {
   connectors: string[];
   workdayMinutes: number;
   ai: boolean;
-  provider?: "openai" | "anthropic";
+  provider?: "openai" | "anthropic" | "local";
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -43,7 +44,7 @@ function parseArgs(argv: string[]): CliOptions {
     else if (a === "--ai") opts.ai = true;
     else if (a === "--provider") {
       const val = args[++i] ?? "";
-      if (val === "openai" || val === "anthropic") opts.provider = val;
+      if (val === "openai" || val === "anthropic" || val === "local") opts.provider = val;
     }
     else if (a === "-h" || a === "--help") {
       printHelp();
@@ -60,12 +61,12 @@ function printHelp() {
 Usage:
   workday setup
   workday detect [--connectors github,linear,slack]
-  workday synth [--connectors github,linear,slack] [--workday-minutes 480] [--ai] [--provider openai|anthropic]
+  workday synth [--connectors github,linear,slack] [--workday-minutes 480] [--ai] [--provider local|anthropic|openai]
 
 Environment variables:
-  ANTHROPIC_API_KEY       Anthropic API key (used when --ai is enabled; takes precedence over OpenAI)
+  ANTHROPIC_API_KEY       Anthropic API key (fallback when local model is unavailable)
   ANTHROPIC_MODEL         Optional model override (default: claude-haiku-4-5)
-  OPENAI_API_KEY          OpenAI API key (used when --ai is enabled and ANTHROPIC_API_KEY is not set)
+  OPENAI_API_KEY          OpenAI API key (fallback when local model and Anthropic are unavailable)
   OPENAI_MODEL            Optional model override (default: gpt-4o-mini)
   LINEAR_API_KEY          Linear personal API key (for linear connector)
   SLACK_USER_TOKEN        Slack user token xoxp-... (for slack connector)
@@ -82,7 +83,7 @@ function buildRegistry(): ConnectorRegistry {
 
 async function resolveProvider(
   useAi: boolean,
-  preferredProvider?: "openai" | "anthropic"
+  preferredProvider?: "openai" | "anthropic" | "local"
 ): Promise<LLMProvider | null> {
   if (!useAi) return null;
 
@@ -90,6 +91,15 @@ async function resolveProvider(
   const openaiKey = process.env.OPENAI_API_KEY;
 
   // Explicit --provider flag takes precedence
+  if (preferredProvider === "local") {
+    if (!modelExists()) {
+      throw new Error(
+        "Local model not found. Run `workday setup` to download it."
+      );
+    }
+    return new LlamaCppProvider(modelPath());
+  }
+
   if (preferredProvider === "anthropic") {
     if (!anthropicKey) {
       throw new Error(
@@ -108,7 +118,11 @@ async function resolveProvider(
     return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
   }
 
-  // Auto-detect: prefer Anthropic, fall back to OpenAI
+  // Auto-detect: local model → Anthropic → OpenAI
+  if (modelExists()) {
+    return new LlamaCppProvider(modelPath());
+  }
+
   if (anthropicKey) {
     return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
   }
@@ -118,7 +132,7 @@ async function resolveProvider(
   }
 
   throw new Error(
-    "An API key is required when --ai is enabled. Set ANTHROPIC_API_KEY or OPENAI_API_KEY. Run `workday setup` first."
+    "No AI provider found. Run `workday setup` to download a local model or add an API key."
   );
 }
 
@@ -162,7 +176,7 @@ async function run() {
 
   const plan = schedule(clusters, opts.workdayMinutes);
   plan.synthesisMode = synthesisMode;
-  plan.synthesisProvider = provider?.id as "openai" | undefined;
+  plan.synthesisProvider = provider?.id as "openai" | "anthropic" | "local" | undefined;
 
   console.log(
     JSON.stringify(
