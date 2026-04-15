@@ -3,17 +3,42 @@
   "description": "CLI tool that weaves scattered developer signals into a focused, prioritized workday plan",
   "version": "0.2.0",
   "license": "MIT",
+  "homepage": "https://emin93.github.io/workweave/",
   "repository": {
     "type": "git",
-    "url": "git@github.com:emin93/workweave.git"
+    "url": "https://github.com/emin93/workweave.git"
   },
+  "bugs": {
+    "url": "https://github.com/emin93/workweave/issues"
+  },
+  "keywords": [
+    "developer-tools",
+    "productivity",
+    "cli",
+    "workday",
+    "planning",
+    "github",
+    "linear",
+    "slack",
+    "ai",
+    "llm"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "workweave": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && node dist/cli.js",
-    "lint": "eslint src/ --ext .ts"
+    "lint": "eslint src/ --ext .ts",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
