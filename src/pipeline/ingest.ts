@@ -1,12 +1,11 @@
-import * as vscode from "vscode";
 import type { ConnectorRegistry } from "../connectors/registry";
 import type { RawEvent } from "../types";
 
-const log = vscode.window.createOutputChannel("Workday Synthesizer", {
-  log: true,
-});
-
-export { log };
+export const log = {
+  info: (msg: string) => console.error(`[info] ${msg}`),
+  warn: (msg: string) => console.error(`[warn] ${msg}`),
+  error: (msg: string) => console.error(`[error] ${msg}`),
+};
 
 export interface IngestionResult {
   events: RawEvent[];
@@ -23,7 +22,7 @@ export class IngestionOrchestrator {
     );
 
     if (connectors.length === 0) {
-      log.warn("No enabled connectors found. Check onboarding config.");
+      log.warn("No enabled connectors found.");
       return { events: [], errors: [] };
     }
 
@@ -35,7 +34,7 @@ export class IngestionOrchestrator {
         log.info(`[${connector.id}] Authenticating...`);
         const authed = await connector.authenticate();
         if (!authed) {
-          throw new Error("Authentication failed or was dismissed by user");
+          throw new Error("Authentication failed");
         }
         log.info(`[${connector.id}] Authenticated. Fetching data...`);
         const fetched = await connector.fetch();

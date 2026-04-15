@@ -78,8 +78,8 @@ export class GitHubConnector implements Connector {
           "   • macOS: brew install gh",
           "   • Linux: see https://github.com/cli/cli/blob/trunk/docs/install_linux.md",
           "2. Run: gh auth login",
-          "3. Restart Cursor / VS Code",
-          "4. Re-run onboarding — GitHub will appear as Ready",
+          "3. Re-run `workday detect`",
+          "4. Use `workday synth --connectors github`",
         ].join("\n"),
       };
     }
@@ -107,7 +107,7 @@ export class GitHubConnector implements Connector {
         "1. Open a terminal",
         "2. Run: gh auth login",
         "3. Follow the prompts to authenticate with GitHub",
-        "4. Re-run onboarding or sync",
+        "4. Re-run `workday detect` or `workday synth`",
       ].join("\n"),
     };
   }
