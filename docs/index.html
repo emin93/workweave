@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workweave — Turn developer signals into a focused workday plan</title>
+  <meta name="description" content="Workweave is a CLI tool that ingests GitHub, Linear, and Slack activity and synthesizes a prioritized, time-boxed plan for your day." />
+  <meta property="og:title" content="Workweave" />
+  <meta property="og:description" content="Turn scattered developer signals into a focused workday plan." />
+  <meta property="og:type" content="website" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f14;
+      --surface:  #13161d;
+      --border:   #1e2330;
+      --accent:   #5b8ff9;
+      --accent2:  #a78bfa;
+      --green:    #34d399;
+      --yellow:   #fbbf24;
+      --red:      #f87171;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --code-bg:  #0a0c10;
+      --radius:   10px;
+      --max:      900px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13,15,20,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 56px;
+    }
+    .nav-logo {
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 1.5rem; font-size: 0.9rem; color: var(--muted); }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    /* ── hero ── */
+    .hero {
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      max-width: var(--max);
+      margin: 0 auto;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(91,143,249,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(91,143,249,0.25);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 4px 14px;
+      margin-bottom: 1.5rem;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 1.25rem;
+    }
+    h1 .grad {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 2.5rem;
+    }
+    .hero-ctas {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.65rem 1.4rem;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .btn:hover { opacity: 0.85; transform: translateY(-1px); text-decoration: none; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+
+    /* ── terminal demo ── */
+    .terminal-wrap {
+      max-width: var(--max);
+      margin: 0 auto 5rem;
+      padding: 0 2rem;
+    }
+    .terminal {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .terminal-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+    .terminal-title { flex: 1; text-align: center; font-size: 0.78rem; color: var(--muted); }
+    .terminal-body { padding: 1.5rem 1.75rem; font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace; font-size: 0.85rem; line-height: 1.8; overflow-x: auto; }
+
+    .t-prompt { color: var(--green); }
+    .t-cmd    { color: var(--text); }
+    .t-dim    { color: var(--muted); }
+    .t-blue   { color: var(--accent); }
+    .t-yellow { color: var(--yellow); }
+    .t-red    { color: var(--red); }
+    .t-green  { color: var(--green); }
+    .t-bold   { font-weight: 700; }
+    .t-header { color: var(--accent2); font-weight: 700; }
+
+    /* ── sections ── */
+    section { max-width: var(--max); margin: 0 auto; padding: 4rem 2rem; }
+    section + section { border-top: 1px solid var(--border); }
+
+    h2 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .section-sub { color: var(--muted); margin-bottom: 2.5rem; font-size: 1rem; }
+
+    /* ── features grid ── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .feature {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.4rem;
+      transition: border-color 0.2s;
+    }
+    .feature:hover { border-color: var(--accent); }
+    .feature-icon { font-size: 1.5rem; margin-bottom: 0.75rem; }
+    .feature h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.35rem; }
+    .feature p { font-size: 0.875rem; color: var(--muted); }
+
+    /* ── pipeline ── */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0;
+      margin: 2rem 0;
+    }
+    .pipe-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .pipe-arrow {
+      color: var(--muted);
+      padding: 0 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    /* ── providers ── */
+    .providers {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .provider {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+    .provider-rank {
+      display: inline-block;
+      background: rgba(91,143,249,0.12);
+      color: var(--accent);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-bottom: 0.6rem;
+      letter-spacing: 0.04em;
+    }
+    .provider h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.3rem; }
+    .provider p  { font-size: 0.82rem; color: var(--muted); }
+
+    /* ── install ── */
+    .install-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.75rem;
+      font-family: "SF Mono", "Fira Code", Menlo, monospace;
+      font-size: 0.875rem;
+      line-height: 2;
+      margin-top: 2rem;
+    }
+    .install-block .t-prompt { user-select: none; }
+
+    /* ── footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 2.5rem 2rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 1rem; }
+      .nav-links { display: none; }
+      .hero { padding: 4rem 1.25rem 2.5rem; }
+      .terminal-wrap { padding: 0 1.25rem; }
+      section { padding: 3rem 1.25rem; }
+      .pipeline { gap: 0.4rem; }
+      .pipe-arrow { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav>
+  <span class="nav-logo">work<span>weave</span></span>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How it works</a>
+    <a href="#ai">AI</a>
+    <a href="#install">Install</a>
+    <a href="https://github.com/emin93/workweave">GitHub</a>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<div class="hero">
+  <div class="badge">Open Source &nbsp;·&nbsp; MIT License</div>
+  <h1>Your workday,<br><span class="grad">synthesized.</span></h1>
+  <p class="hero-sub">
+    Workweave pulls open PRs, assigned issues, and Slack mentions into a single,
+    prioritized plan — so you start each day with clarity, not tabs.
+  </p>
+  <div class="hero-ctas">
+    <a class="btn btn-primary" href="#install">Get started</a>
+    <a class="btn btn-ghost" href="https://github.com/emin93/workweave">View on GitHub</a>
+  </div>
+</div>
+
+<!-- ── Terminal demo ── -->
+<div class="terminal-wrap">
+  <div class="terminal">
+    <div class="terminal-bar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+      <span class="terminal-title">workweave synth --connectors github,linear,slack --ai</span>
+    </div>
+    <div class="terminal-body">
+<span class="t-dim">────────────────────────────────────────────────────────────────</span>
+<span class="t-header">  Workweave Plan</span><span class="t-dim">  ·  Tuesday, April 15  ·  github, linear, slack  ·  AI · local</span>
+<span class="t-dim">────────────────────────────────────────────────────────────────</span>
+<span class="t-bold">  6 tasks</span>  <span class="t-dim">·</span>  <span class="t-bold">5h 40m scheduled</span>  <span class="t-dim">·  2h 20m remaining  ·  84 events fetched</span>
+
+<span class="t-dim">   1  0:00–1:30   </span><span class="t-yellow">REVIEW     </span>  <span class="t-bold">Auth token expiry — 3 PRs need sign-off</span>  <span class="t-red t-bold"> 94</span>
+<span class="t-dim">         Blocking: @dana waiting on review since yesterday</span>
+<span class="t-dim">         ↗  github.com/emin93/api/pull/204</span>
+
+<span class="t-dim">   2  1:30–2:30   </span><span class="t-blue">IMPLEMENT  </span>  <span class="t-bold">Rate-limiter refactor — branch ready to close</span>  <span class="t-red t-bold"> 88</span>
+<span class="t-dim">         api · workweave</span>
+<span class="t-dim">         ↗  github.com/emin93/api/pull/198</span>
+
+<span class="t-dim">   3  2:30–3:00   </span><span class="t-green">RESPOND    </span>  <span class="t-bold">Slack: infra outage discussion thread</span>  <span class="t-yellow t-bold"> 76</span>
+<span class="t-dim">         #incidents  ·  14 replies, 2 @mentions</span>
+
+<span class="t-dim">   4  3:00–4:00   </span><span class="t-blue">IMPLEMENT  </span>  <span class="t-bold">Linear P1 — fix pagination bug in search API</span>  <span class="t-yellow t-bold"> 71</span>
+<span class="t-dim">         api  ·  assigned 2d ago</span>
+
+<span class="t-dim">   5  4:00–4:45   </span><span class="t-dim">INVESTIGATE</span>  <span class="t-bold">Flaky CI in monorepo — 4 failures this week</span>  <span class="t-dim t-bold"> 58</span>
+<span class="t-dim">         ↗  github.com/emin93/monorepo/actions/runs/9912</span>
+
+<span class="t-dim">   6  4:45–5:40   </span><span class="t-yellow">FOLLOW UP  </span>  <span class="t-bold">Vendor migration doc — waiting on PM reply</span>  <span class="t-dim t-bold"> 42</span>
+
+<span class="t-dim">  ████████████████████████████████░░░░░░░░  5h 40m / 8h  (71%)</span>
+
+<span class="t-dim">────────────────────────────────────────────────────────────────</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Features ── -->
+<section id="features">
+  <h2>Everything you need. Nothing you don't.</h2>
+  <p class="section-sub">Built for developers who want signal, not noise.</p>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <h3>Three connectors, one plan</h3>
+      <p>Pull signals from GitHub, Linear, and Slack. Correlate related items across sources automatically.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🤖</div>
+      <h3>AI-powered or fully offline</h3>
+      <p>Use a local Llama model with no API key, or plug in Anthropic or OpenAI. Rules mode works with no internet.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🗓</div>
+      <h3>Time-boxed scheduling</h3>
+      <p>Tasks are fit into your available hours with context-affinity nudging — related work stays together.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔢</div>
+      <h3>Priority scoring</h3>
+      <p>Items are ranked by urgency, importance, social pressure, staleness, and blocking factors — not guesswork.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🖥</div>
+      <h3>Rich terminal output</h3>
+      <p>Color-coded plan with time slots, category badges, source URLs, and a time-budget bar.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📦</div>
+      <h3>JSON mode for automation</h3>
+      <p>Pipe <code>--json</code> output into dashboards, scripts, or your own tools with a clean, stable schema.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section id="how-it-works">
+  <h2>How it works</h2>
+  <p class="section-sub">A five-step pipeline from raw events to a ready-to-execute plan.</p>
+  <div class="pipeline">
+    <div class="pipe-step">Ingest</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">Normalize</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">Correlate</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">Prioritize</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step">Schedule</div>
+  </div>
+  <div class="features" style="margin-top:1.5rem;">
+    <div class="feature">
+      <h3>1 · Ingest</h3>
+      <p>Connectors fetch open PRs, assigned issues, DMs, and thread mentions in parallel.</p>
+    </div>
+    <div class="feature">
+      <h3>2 · Normalize</h3>
+      <p>Every raw event is mapped to a common <code>Artifact</code> model with source, type, timestamps, and metadata.</p>
+    </div>
+    <div class="feature">
+      <h3>3 · Correlate</h3>
+      <p>Artifacts sharing a repo, project, or linked ID are grouped into clusters so related work stays together.</p>
+    </div>
+    <div class="feature">
+      <h3>4 · Prioritize</h3>
+      <p>Each cluster gets a priority score from 0–100 based on urgency, age, blocking status, and social signals.</p>
+    </div>
+    <div class="feature">
+      <h3>5 · Schedule</h3>
+      <p>Clusters are assigned time slots within your workday budget. Overflow goes to the backlog.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── AI providers ── -->
+<section id="ai">
+  <h2>AI that runs anywhere</h2>
+  <p class="section-sub">
+    With <code>--ai</code>, Workweave auto-detects the best available provider.
+    No key? No problem — download the local model once and run forever.
+  </p>
+  <div class="providers">
+    <div class="provider">
+      <div class="provider-rank">PRIORITY 1</div>
+      <h3>Local model</h3>
+      <p>Qwen 2.5 1.5B via <code>node-llama-cpp</code>. ~1 GB download, runs on CPU, no API key required.</p>
+    </div>
+    <div class="provider">
+      <div class="provider-rank">PRIORITY 2</div>
+      <h3>Anthropic Claude</h3>
+      <p>Uses <code>claude-haiku-4-5</code> by default. Set <code>ANTHROPIC_API_KEY</code> to enable.</p>
+    </div>
+    <div class="provider">
+      <div class="provider-rank">PRIORITY 3</div>
+      <h3>OpenAI</h3>
+      <p>Uses <code>gpt-4o-mini</code> by default. Set <code>OPENAI_API_KEY</code> to enable.</p>
+    </div>
+  </div>
+  <p style="margin-top:1.5rem;color:var(--muted);font-size:0.9rem;">
+    Force a specific provider with <code>--provider local|anthropic|openai</code>.
+  </p>
+</section>
+
+<!-- ── Install ── -->
+<section id="install">
+  <h2>Get started in minutes</h2>
+  <p class="section-sub">Node.js 18+ required. No global install needed to try it out.</p>
+  <div class="install-block">
+<span class="t-dim"># Clone and build</span>
+<span class="t-prompt">$</span> <span class="t-cmd">git clone https://github.com/emin93/workweave.git &amp;&amp; cd workweave</span>
+<span class="t-prompt">$</span> <span class="t-cmd">npm install &amp;&amp; npm run build</span>
+<span class="t-prompt">$</span> <span class="t-cmd">npm link</span>
+&nbsp;
+<span class="t-dim"># Run the interactive setup wizard</span>
+<span class="t-prompt">$</span> <span class="t-cmd">workweave setup</span>
+&nbsp;
+<span class="t-dim"># Check your connectors are ready</span>
+<span class="t-prompt">$</span> <span class="t-cmd">workweave detect --connectors github,linear,slack</span>
+&nbsp;
+<span class="t-dim"># Synthesize today's plan</span>
+<span class="t-prompt">$</span> <span class="t-cmd">workweave synth --connectors github,linear,slack --ai</span>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <p>
+    <strong>Workweave</strong> is open source under the
+    <a href="https://github.com/emin93/workweave/blob/main/LICENSE">MIT License</a>.
+    &nbsp;·&nbsp;
+    <a href="https://github.com/emin93/workweave">GitHub</a>
+    &nbsp;·&nbsp;
+    Built by <a href="https://github.com/emin93">emin93</a>
+  </p>
+</footer>
+
+</body>
+</html>
