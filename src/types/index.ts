@@ -74,7 +74,7 @@ export type TaskCategory =
   | "follow_up"
   | "other";
 
-export type AIProviderType = "openai" | "ollama";
+export type AIProviderType = "openai" | "anthropic" | "ollama";
 
 export interface WorkdayPlan {
   id: string;

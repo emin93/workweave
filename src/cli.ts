@@ -9,7 +9,7 @@ import { correlate } from "./pipeline/correlate";
 import { prioritize } from "./pipeline/prioritize";
 import { schedule } from "./pipeline/schedule";
 import { aiSynthesize } from "./pipeline/ai-synthesize";
-import { OpenAIProvider, type LLMProvider } from "./ai/provider";
+import { OpenAIProvider, AnthropicProvider, type LLMProvider } from "./ai/provider";
 import { loadLocalEnv } from "./env";
 import { runSetup } from "./setup";
 
@@ -18,6 +18,7 @@ interface CliOptions {
   connectors: string[];
   workdayMinutes: number;
   ai: boolean;
+  provider?: "openai" | "anthropic";
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -40,6 +41,10 @@ function parseArgs(argv: string[]): CliOptions {
     if (a === "--connectors") opts.connectors = (args[++i] ?? "github").split(",").map((x) => x.trim()).filter(Boolean);
     else if (a === "--workday-minutes") opts.workdayMinutes = Number(args[++i] ?? "480");
     else if (a === "--ai") opts.ai = true;
+    else if (a === "--provider") {
+      const val = args[++i] ?? "";
+      if (val === "openai" || val === "anthropic") opts.provider = val;
+    }
     else if (a === "-h" || a === "--help") {
       printHelp();
       process.exit(0);
@@ -55,11 +60,13 @@ function printHelp() {
 Usage:
   workday setup
   workday detect [--connectors github,linear,slack]
-  workday synth [--connectors github,linear,slack] [--workday-minutes 480] [--ai]
+  workday synth [--connectors github,linear,slack] [--workday-minutes 480] [--ai] [--provider openai|anthropic]
 
 Environment variables:
-  OPENAI_API_KEY          API key used when --ai is enabled
-  OPENAI_MODEL            Optional model (default: gpt-4o-mini)
+  ANTHROPIC_API_KEY       Anthropic API key (used when --ai is enabled; takes precedence over OpenAI)
+  ANTHROPIC_MODEL         Optional model override (default: claude-haiku-4-5)
+  OPENAI_API_KEY          OpenAI API key (used when --ai is enabled and ANTHROPIC_API_KEY is not set)
+  OPENAI_MODEL            Optional model override (default: gpt-4o-mini)
   LINEAR_API_KEY          Linear personal API key (for linear connector)
   SLACK_USER_TOKEN        Slack user token xoxp-... (for slack connector)
 `);
@@ -73,20 +80,46 @@ function buildRegistry(): ConnectorRegistry {
   return registry;
 }
 
-async function resolveProvider(useAi: boolean): Promise<LLMProvider | null> {
+async function resolveProvider(
+  useAi: boolean,
+  preferredProvider?: "openai" | "anthropic"
+): Promise<LLMProvider | null> {
   if (!useAi) return null;
 
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    throw new Error(
-      "OPENAI_API_KEY is required when --ai is enabled. Run `workday setup` first."
-    );
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  // Explicit --provider flag takes precedence
+  if (preferredProvider === "anthropic") {
+    if (!anthropicKey) {
+      throw new Error(
+        "ANTHROPIC_API_KEY is required when --provider anthropic is set. Run `workday setup` first."
+      );
+    }
+    return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
   }
 
-  return new OpenAIProvider({
-    apiKey: key,
-    model: process.env.OPENAI_MODEL,
-  });
+  if (preferredProvider === "openai") {
+    if (!openaiKey) {
+      throw new Error(
+        "OPENAI_API_KEY is required when --provider openai is set. Run `workday setup` first."
+      );
+    }
+    return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
+  }
+
+  // Auto-detect: prefer Anthropic, fall back to OpenAI
+  if (anthropicKey) {
+    return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
+  }
+
+  if (openaiKey) {
+    return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
+  }
+
+  throw new Error(
+    "An API key is required when --ai is enabled. Set ANTHROPIC_API_KEY or OPENAI_API_KEY. Run `workday setup` first."
+  );
 }
 
 loadLocalEnv();
@@ -115,7 +148,7 @@ async function run() {
   const { events, errors } = await ingestion.fetchAll(opts.connectors);
   const artifacts = normalize(events);
 
-  const provider = await resolveProvider(opts.ai);
+  const provider = await resolveProvider(opts.ai, opts.provider);
   let clusters;
   let synthesisMode: "ai" | "rules" = "rules";
 

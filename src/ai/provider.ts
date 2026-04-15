@@ -13,6 +13,11 @@ export interface OpenAIConfig {
   model?: string;
 }
 
+export interface AnthropicConfig {
+  apiKey: string;
+  model?: string;
+}
+
 export class OpenAIProvider implements LLMProvider {
   id = "openai";
   name = "OpenAI API";
@@ -49,6 +54,48 @@ export class OpenAIProvider implements LLMProvider {
     }).then((raw) => {
       const parsed = JSON.parse(raw);
       return parsed.choices?.[0]?.message?.content ?? "";
+    });
+  }
+}
+
+export class AnthropicProvider implements LLMProvider {
+  id = "anthropic";
+  name = "Anthropic API";
+
+  constructor(private config: AnthropicConfig) {}
+
+  async isAvailable(): Promise<boolean> {
+    return !!this.config.apiKey;
+  }
+
+  async complete(prompt: string): Promise<string> {
+    const model = this.config.model || "claude-haiku-4-5";
+    const url = new URL("/v1/messages", "https://api.anthropic.com");
+
+    const body = JSON.stringify({
+      model,
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    return httpRequest({
+      hostname: url.hostname,
+      port: 443,
+      path: url.pathname,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": this.config.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      protocol: "https:",
+      body,
+      timeoutMs: 60_000,
+    }).then((raw) => {
+      const parsed = JSON.parse(raw);
+      const textBlock = (parsed.content as Array<{ type: string; text?: string }> | undefined)
+        ?.find((b) => b.type === "text");
+      return textBlock?.text ?? "";
     });
   }
 }
