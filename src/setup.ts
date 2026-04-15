@@ -1,5 +1,4 @@
 import { createInterface } from "readline/promises";
-import type { ConnectorRegistry } from "./connectors/registry";
 import { envFilePath, upsertLocalEnv } from "./env";
 import {
   MODEL_NAME,
@@ -54,24 +53,27 @@ async function ask(
 
 // ── sections ───────────────────────────────────────────────────────────────
 
-async function setupGitHub(registry: ConnectorRegistry): Promise<void> {
+async function setupGitHub(rl: ReturnType<typeof createInterface>): Promise<void> {
   section("GitHub");
 
-  const github = registry.get("github");
-  if (!github) {
-    warn("GitHub connector not registered — skipping.");
-    return;
+  if (process.env.GITHUB_TOKEN) {
+    ok("GITHUB_TOKEN is already configured.");
+    const replace = await yesNo(rl, "Replace it?", false);
+    if (!replace) return;
+  } else {
+    const configure = await yesNo(rl, "Configure GitHub now?", true);
+    if (!configure) { info("  Skipped."); return; }
   }
 
-  const status = await github.detect();
-  if (status.available) {
-    ok("GitHub CLI is authenticated.");
-  } else {
-    warn("GitHub CLI is not authenticated.");
-    info("");
-    info("  Run this in your terminal, then re-run setup:");
-    info("    gh auth login");
-  }
+  info("");
+  info("  1. Go to github.com/settings/tokens → Generate new token (classic)");
+  info("  2. Name it 'Workday Synthesizer' and set an expiration");
+  info("  3. Select scope: repo");
+  info("  4. Click Generate token and copy it");
+  const token = await ask(rl, "Paste GITHUB_TOKEN (input is visible):");
+  if (!token) { warn("No token entered — skipping."); return; }
+  const file = upsertLocalEnv("GITHUB_TOKEN", token);
+  ok(`GITHUB_TOKEN saved to ${file}`);
 }
 
 async function setupLocalModel(
@@ -206,8 +208,13 @@ async function setupSlack(rl: ReturnType<typeof createInterface>): Promise<void>
   }
 
   info("");
-  info("  User token (xoxp-...) with scopes:");
-  info("    search:read  users:read  channels:read  groups:read  im:read");
+  info("  1. Go to api.slack.com/apps → Create New App → From scratch");
+  info("  2. Name it (e.g. 'Workday Synthesizer') and pick your workspace");
+  info("  3. Sidebar: OAuth & Permissions → User Token Scopes → add:");
+  info("       search:read  users:read  channels:read  groups:read  im:read");
+  info("  4. Scroll up → Install to Workspace → Authorize");
+  info("  5. Copy the User OAuth Token  (starts with xoxp-)");
+
   const token = await ask(rl, "Paste SLACK_USER_TOKEN (input is visible):");
   if (!token) { warn("No token entered — skipping."); return; }
   const file = upsertLocalEnv("SLACK_USER_TOKEN", token);
@@ -229,7 +236,7 @@ function printNextSteps(): void {
 
 // ── entrypoint ─────────────────────────────────────────────────────────────
 
-export async function runSetup(registry: ConnectorRegistry): Promise<void> {
+export async function runSetup(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   try {
@@ -241,7 +248,7 @@ export async function runSetup(registry: ConnectorRegistry): Promise<void> {
     info("  Configures connectors and AI synthesis.");
     info("  Credentials are stored in a local .env file (never committed).");
 
-    await setupGitHub(registry);
+    await setupGitHub(rl);
     const hasLocal = await setupLocalModel(rl);
     if (!hasLocal) {
       // Only prompt for an API key if they declined the local model

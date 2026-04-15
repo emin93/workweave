@@ -148,7 +148,7 @@ async function run() {
   const registry = buildRegistry();
 
   if (opts.command === "setup") {
-    await runSetup(registry);
+    await runSetup();
     return;
   }
 

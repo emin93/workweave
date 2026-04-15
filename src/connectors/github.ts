@@ -1,5 +1,4 @@
-import { execFile } from "child_process";
-import { promisify } from "util";
+import * as https from "https";
 import type {
   Connector,
   ConnectorStatus,
@@ -7,57 +6,50 @@ import type {
   RawEvent,
 } from "../types";
 
-const execFileAsync = promisify(execFile);
-
-const WINDOWS_PATHS = [
-  "C:\\Program Files\\GitHub CLI\\gh.exe",
-  "C:\\Program Files (x86)\\GitHub CLI\\gh.exe",
-];
-const MAC_PATHS = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"];
-
-let _ghPath: string | null = null;
-
-async function runGh(args: string[]): Promise<string> {
-  const ghExe = await findGh();
-  const { stdout } = await execFileAsync(ghExe, args, {
-    timeout: 30_000,
-    maxBuffer: 5 * 1024 * 1024,
-    env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1" },
+async function githubApi<T>(
+  token: string,
+  path: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "api.github.com",
+        path,
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "workday-synthesizer",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          if (res.statusCode === 401) {
+            reject(new Error("GitHub token is invalid or expired"));
+            return;
+          }
+          if (res.statusCode && res.statusCode >= 400) {
+            reject(new Error(`GitHub API error: HTTP ${res.statusCode}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(data) as T);
+          } catch {
+            reject(new Error("Failed to parse GitHub API response"));
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.setTimeout(15_000, () => {
+      req.destroy();
+      reject(new Error("GitHub API timeout"));
+    });
+    req.end();
   });
-  return stdout.trim();
-}
-
-async function findGh(): Promise<string> {
-  if (_ghPath) return _ghPath;
-
-  // Try "gh" on PATH
-  try {
-    await execFileAsync("gh", ["--version"], { timeout: 3000 });
-    _ghPath = "gh";
-    return _ghPath;
-  } catch {
-    // not on PATH
-  }
-
-  // Try platform-specific paths
-  const candidates =
-    process.platform === "win32"
-      ? WINDOWS_PATHS
-      : process.platform === "darwin"
-        ? MAC_PATHS
-        : [];
-
-  for (const p of candidates) {
-    try {
-      await execFileAsync(p, ["--version"], { timeout: 3000 });
-      _ghPath = p;
-      return _ghPath;
-    } catch {
-      // try next
-    }
-  }
-
-  throw new Error("GitHub CLI (gh) not found");
 }
 
 export class GitHubConnector implements Connector {
@@ -65,153 +57,111 @@ export class GitHubConnector implements Connector {
   name = "GitHub";
   icon = "github";
 
+  private _token: string | null = null;
+  private _username: string | null = null;
+
   async detect(): Promise<ConnectorStatus> {
-    try {
-      await findGh();
-    } catch {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
       return {
         available: false,
-        reason: "GitHub CLI not installed",
+        reason: "GITHUB_TOKEN is not set",
         setupInstructions: [
-          "1. Install the GitHub CLI from https://cli.github.com",
-          "   • Windows: winget install GitHub.cli",
-          "   • macOS: brew install gh",
-          "   • Linux: see https://github.com/cli/cli/blob/trunk/docs/install_linux.md",
-          "2. Run: gh auth login",
-          "3. Re-run `workday detect`",
-          "4. Use `workday synth --connectors github`",
+          "1. Go to github.com/settings/tokens → Generate new token (classic)",
+          "2. Name it 'Workday Synthesizer', set expiration",
+          "3. Select scope: repo",
+          "4. Generate and copy the token",
+          "5. Run `workday setup` and paste it when prompted",
         ].join("\n"),
       };
     }
 
     try {
-      const output = await runGh(["auth", "status"]);
-      if (output.includes("Logged in") || output.includes("Token:")) {
-        return { available: true, authMethod: "cli" };
-      }
+      const user = await githubApi<{ login: string }>(token, "/user");
+      if (!user.login) throw new Error("No login in response");
+      return { available: true, authMethod: "token" };
     } catch (err) {
-      // gh auth status exits non-zero but prints status to stderr which
-      // execFile captures in the error object
-      const msg = err instanceof Error ? err.message : String(err);
-      const stderr = (err as { stderr?: string }).stderr ?? "";
-      const combined = msg + stderr;
-      if (combined.includes("Logged in") || combined.includes("Token:")) {
-        return { available: true, authMethod: "cli" };
-      }
+      return {
+        available: false,
+        reason: err instanceof Error ? err.message : "GitHub token validation failed",
+        setupInstructions: "Run `workday setup` to update your GITHUB_TOKEN.",
+      };
     }
-
-    return {
-      available: false,
-      reason: "GitHub CLI not authenticated",
-      setupInstructions: [
-        "1. Open a terminal",
-        "2. Run: gh auth login",
-        "3. Follow the prompts to authenticate with GitHub",
-        "4. Re-run `workday detect` or `workday synth`",
-      ].join("\n"),
-    };
   }
 
   async authenticate(): Promise<boolean> {
-    const status = await this.detect();
-    return status.available;
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return false;
+    try {
+      const user = await githubApi<{ login: string }>(token, "/user");
+      this._token = token;
+      this._username = user.login;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   getCapabilities(): ConnectorCapability[] {
     return [
-      {
-        type: "pr",
-        description: "Pull requests assigned or requesting your review",
-      },
+      { type: "pr", description: "Pull requests assigned or requesting your review" },
       { type: "issue", description: "Issues assigned to you" },
     ];
   }
 
   async fetch(): Promise<RawEvent[]> {
+    if (!this._token || !this._username) {
+      const ok = await this.authenticate();
+      if (!ok) throw new Error("GitHub authentication failed");
+    }
+
+    const token = this._token!;
+    const username = this._username!;
     const events: RawEvent[] = [];
     const now = new Date().toISOString();
+    const seen = new Set<string>();
     const errors: string[] = [];
 
-    const username = await runGh(["api", "user", "--jq", ".login"]);
+    const queries: Array<{ label: string; q: string; sourceType: string }> = [
+      {
+        label: "review-requested PRs",
+        q: `is:open+is:pr+review-requested:${username}+archived:false`,
+        sourceType: "pr",
+      },
+      {
+        label: "authored PRs",
+        q: `is:open+is:pr+author:${username}+archived:false`,
+        sourceType: "pr",
+      },
+      {
+        label: "assigned issues",
+        q: `is:open+is:issue+assignee:${username}+archived:false`,
+        sourceType: "issue",
+      },
+    ];
 
-    const seen = new Set<string>();
-
-    // Fetch PRs requesting your review
-    try {
-      const raw = await runGh([
-        "api",
-        `search/issues?q=is:open+is:pr+review-requested:${username}+archived:false&per_page=25`,
-        "--jq",
-        ".items",
-      ]);
-      if (raw && raw !== "null") {
-        const items = JSON.parse(raw) as SearchItem[];
-        for (const item of items) {
-          const key = `github-pr-${item.number}-${repoFromUrl(item.repository_url)}`;
+    for (const { label, q, sourceType } of queries) {
+      try {
+        const result = await githubApi<{ items: SearchItem[] }>(
+          token,
+          `/search/issues?q=${q}&per_page=25`
+        );
+        for (const item of result.items ?? []) {
+          const repo = repoFromUrl(item.repository_url);
+          const key = `github-${sourceType}-${item.number}-${repo}`;
           if (seen.has(key)) continue;
           seen.add(key);
           events.push({
             id: key,
             connectorId: this.id,
-            sourceType: "pr",
+            sourceType,
             rawPayload: toPayload(item, username),
             fetchedAt: now,
           });
         }
+      } catch (err) {
+        errors.push(`${label}: ${err instanceof Error ? err.message : err}`);
       }
-    } catch (err) {
-      errors.push(`PRs: ${err instanceof Error ? err.message : err}`);
-    }
-
-    // Fetch PRs authored by you
-    try {
-      const raw = await runGh([
-        "api",
-        `search/issues?q=is:open+is:pr+author:${username}+archived:false&per_page=25`,
-        "--jq",
-        ".items",
-      ]);
-      if (raw && raw !== "null") {
-        const items = JSON.parse(raw) as SearchItem[];
-        for (const item of items) {
-          const key = `github-pr-${item.number}-${repoFromUrl(item.repository_url)}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          events.push({
-            id: key,
-            connectorId: this.id,
-            sourceType: "pr",
-            rawPayload: toPayload(item, username),
-            fetchedAt: now,
-          });
-        }
-      }
-    } catch (err) {
-      errors.push(`Authored PRs: ${err instanceof Error ? err.message : err}`);
-    }
-
-    // Fetch assigned issues
-    try {
-      const raw = await runGh([
-        "api",
-        `search/issues?q=is:open+is:issue+assignee:${username}+archived:false&per_page=25`,
-        "--jq",
-        ".items",
-      ]);
-      if (raw && raw !== "null") {
-        const items = JSON.parse(raw) as SearchItem[];
-        for (const item of items) {
-          events.push({
-            id: `github-issue-${item.number}-${repoFromUrl(item.repository_url)}`,
-            connectorId: this.id,
-            sourceType: "issue",
-            rawPayload: toPayload(item, username),
-            fetchedAt: now,
-          });
-        }
-      }
-    } catch (err) {
-      errors.push(`Issues: ${err instanceof Error ? err.message : err}`);
     }
 
     if (events.length === 0 && errors.length > 0) {
@@ -228,7 +178,7 @@ function repoFromUrl(repositoryUrl: string): string {
 
 function toPayload(
   item: SearchItem,
-  currentUser?: string
+  currentUser: string
 ): Record<string, unknown> {
   const authorLogin = item.user?.login ?? "unknown";
   return {
@@ -238,9 +188,7 @@ function toPayload(
     createdAt: item.created_at,
     updatedAt: item.updated_at,
     author: { login: authorLogin },
-    isAuthor: currentUser
-      ? authorLogin.toLowerCase() === currentUser.toLowerCase()
-      : false,
+    isAuthor: authorLogin.toLowerCase() === currentUser.toLowerCase(),
     labels: (item.labels ?? []).map((l) =>
       typeof l === "string" ? { name: l } : { name: l.name ?? "" }
     ),
