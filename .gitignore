@@ -9,3 +9,4 @@ out/
 .env.*
 .workday/
 .codex
+.claude
