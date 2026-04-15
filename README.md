@@ -140,17 +140,17 @@ workweave synth --no-ai
 
 ---
 
-## AI providers
+## AI provider
 
-Workweave auto-detects the best available AI provider on every run. Configure one and it just works — no flags needed. The detection order is:
+Run `workweave setup` to choose your AI provider. The choice is saved to your `.env` and used on every run.
 
-| Priority | Provider | How to configure |
-|----------|----------|-----------------|
-| 1 | **Local model** (Llama, via `node-llama-cpp`) | Run `workweave setup` to download (~4 GB, CPU-only, no key) |
-| 2 | **Anthropic** (`claude-haiku-4-5`) | Set `ANTHROPIC_API_KEY` |
-| 3 | **OpenAI** (`gpt-4o-mini`) | Set `OPENAI_API_KEY` |
+| Provider | Model | Requires |
+|----------|-------|---------|
+| **Anthropic** | `claude-haiku-4-5` | `ANTHROPIC_API_KEY` |
+| **OpenAI** | `gpt-4o-mini` | `OPENAI_API_KEY` |
+| **Local** | Qwen 2.5 1.5B (via `node-llama-cpp`) | ~1 GB one-time download, no key |
 
-You can force a provider with `--provider local|anthropic|openai`.
+Override for a single run with `--provider anthropic|openai|local`.
 
 ---
 
@@ -158,6 +158,7 @@ You can force a provider with `--provider local|anthropic|openai`.
 
 | Variable | Description |
 |----------|-------------|
+| `AI_PROVIDER` | Active AI provider: `anthropic` \| `openai` \| `local` (set by `workweave setup`) |
 | `GITHUB_TOKEN` | GitHub personal access token (repo scope) |
 | `LINEAR_API_KEY` | Linear personal API key |
 | `SLACK_USER_TOKEN` | Slack user token (`xoxp-…`) |

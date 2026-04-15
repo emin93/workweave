@@ -76,32 +76,65 @@ async function setupGitHub(rl: ReturnType<typeof createInterface>): Promise<void
   ok(`GITHUB_TOKEN saved to ${file}`);
 }
 
-async function setupLocalModel(
-  rl: ReturnType<typeof createInterface>
-): Promise<boolean> {
-  section("AI synthesis  —  local model  (recommended)");
+async function setupAI(rl: ReturnType<typeof createInterface>): Promise<void> {
+  section("AI");
 
-  if (modelExists()) {
-    ok(`${MODEL_NAME} is already downloaded.`);
-    info(`  Path: ${modelPath()}`);
-    const replace = await yesNo(rl, "Re-download it?", false);
-    if (!replace) return true;
-  } else {
-    info(`  Model : ${MODEL_NAME} Q4_K_M`);
-    info(`  Size  : ~${MODEL_SIZE_MB} MB  (downloaded once, stored in ~/.workweave/models/)`);
-    info(`  Speed : ~5–15 s per synthesis on CPU`);
-    info(`  Key   : none required`);
+  const current = process.env.AI_PROVIDER as "anthropic" | "openai" | "local" | undefined;
 
-    const go = await yesNo(rl, "Download and use the local model?", true);
-    if (!go) return false;
+  if (current) {
+    ok(`AI provider is set to: ${current}`);
+    const change = await yesNo(rl, "Change it?", false);
+    if (!change) return;
   }
 
+  info("");
+  info("  Choose an AI provider:");
+  info("  1) Anthropic  (claude-haiku-4-5)  — fast, hosted");
+  info("  2) OpenAI     (gpt-4o-mini)       — fast, hosted");
+  info("  3) Local      (Qwen 2.5 1.5B)     — private, runs on CPU, no key required");
+
+  const choice = (await rl.question("\n  Enter 1, 2 or 3 [1]: ")).trim();
+
+  if (choice === "2") {
+    info("");
+    info("  Get a key at https://platform.openai.com/api-keys");
+    const key = await ask(rl, "Paste OPENAI_API_KEY (input is visible):");
+    if (!key) { warn("No key entered — skipping."); return; }
+    upsertLocalEnv("OPENAI_API_KEY", key);
+    const file = upsertLocalEnv("AI_PROVIDER", "openai");
+    ok(`OpenAI configured. Settings saved to ${file}`);
+  } else if (choice === "3") {
+    info(`  Model : ${MODEL_NAME} Q4_K_M`);
+    info(`  Size  : ~${MODEL_SIZE_MB} MB  (stored in ~/.workweave/models/)`);
+    info(`  Speed : ~5–15 s per synthesis on CPU`);
+    if (modelExists()) {
+      ok(`${MODEL_NAME} is already downloaded.`);
+      const redownload = await yesNo(rl, "Re-download it?", false);
+      if (redownload) await downloadLocalModel();
+    } else {
+      const go = await yesNo(rl, "Download now?", true);
+      if (!go) { info("  Skipped."); return; }
+      await downloadLocalModel();
+    }
+    const file = upsertLocalEnv("AI_PROVIDER", "local");
+    ok(`Local model configured. Settings saved to ${file}`);
+  } else {
+    info("");
+    info("  Get a key at https://console.anthropic.com/settings/keys");
+    const key = await ask(rl, "Paste ANTHROPIC_API_KEY (input is visible):");
+    if (!key) { warn("No key entered — skipping."); return; }
+    upsertLocalEnv("ANTHROPIC_API_KEY", key);
+    const file = upsertLocalEnv("AI_PROVIDER", "anthropic");
+    ok(`Anthropic configured. Settings saved to ${file}`);
+  }
+}
+
+async function downloadLocalModel(): Promise<void> {
   info("");
   info(`  Downloading ${MODEL_FILE} …`);
   info("");
 
   let lastLine = "";
-
   await downloadModel((downloadedMB, totalMB, pct) => {
     const bar = progressBar(pct);
     const line = `  ${bar} ${pct}%  ${downloadedMB} MB / ${totalMB} MB`;
@@ -112,66 +145,6 @@ async function setupLocalModel(
   process.stdout.write("\n");
   info("");
   ok(`Downloaded to ${modelPath()}`);
-
-  return true;
-}
-
-async function setupAPIProvider(
-  rl: ReturnType<typeof createInterface>
-): Promise<void> {
-  section("AI synthesis  —  API key  (alternative)");
-
-  info("  Use an API key instead of (or alongside) the local model.");
-  info("  The local model is preferred at runtime; an API key is a fallback.");
-  info("");
-
-  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-  const hasOpenAI = !!process.env.OPENAI_API_KEY;
-
-  if (hasAnthropic) {
-    ok("ANTHROPIC_API_KEY is already configured.");
-    const replace = await yesNo(rl, "Replace it?", false);
-    if (replace) await enterKey(rl, "anthropic");
-  } else if (hasOpenAI) {
-    ok("OPENAI_API_KEY is already configured.");
-    const replace = await yesNo(rl, "Replace it or add an Anthropic key?", false);
-    if (replace) await pickAndEnterKey(rl);
-  } else {
-    const configure = await yesNo(rl, "Add an API key now?", false);
-    if (configure) await pickAndEnterKey(rl);
-    else info("  Skipped. Run `workweave setup` again to add one later.");
-  }
-}
-
-async function pickAndEnterKey(
-  rl: ReturnType<typeof createInterface>
-): Promise<void> {
-  info("");
-  info("  1) Anthropic  (claude-haiku-4-5)");
-  info("  2) OpenAI     (gpt-4o-mini)");
-  const choice = (await rl.question("\n  Enter 1 or 2 [1]: ")).trim();
-  await enterKey(rl, choice === "2" ? "openai" : "anthropic");
-}
-
-async function enterKey(
-  rl: ReturnType<typeof createInterface>,
-  provider: "anthropic" | "openai"
-): Promise<void> {
-  if (provider === "anthropic") {
-    info("");
-    info("  Get a key at https://console.anthropic.com/settings/keys");
-    const key = await ask(rl, "Paste ANTHROPIC_API_KEY (input is visible):");
-    if (!key) { warn("No key entered — skipping."); return; }
-    const file = upsertLocalEnv("ANTHROPIC_API_KEY", key);
-    ok(`ANTHROPIC_API_KEY saved to ${file}`);
-  } else {
-    info("");
-    info("  Get a key at https://platform.openai.com/api-keys");
-    const key = await ask(rl, "Paste OPENAI_API_KEY (input is visible):");
-    if (!key) { warn("No key entered — skipping."); return; }
-    const file = upsertLocalEnv("OPENAI_API_KEY", key);
-    ok(`OPENAI_API_KEY saved to ${file}`);
-  }
 }
 
 async function setupLinear(rl: ReturnType<typeof createInterface>): Promise<void> {
@@ -253,8 +226,8 @@ function printNextSteps(): void {
   info("Local config: " + envFilePath());
   info("");
   info("  Try it out:");
-  info("    workweave detect --connectors github,linear,slack");
-  info("    workweave synth  --connectors github --ai");
+  info("    workweave detect");
+  info("    workweave synth");
   info("");
   info("  Run setup again any time to add or update credentials:");
   info("    workweave setup");
@@ -276,15 +249,7 @@ export async function runSetup(): Promise<void> {
     info("  Credentials are stored in a local .env file (never committed).");
 
     await setupGitHub(rl);
-    const hasLocal = await setupLocalModel(rl);
-    if (!hasLocal) {
-      // Only prompt for an API key if they declined the local model
-      await setupAPIProvider(rl);
-    } else {
-      // Still offer an API key as an optional fallback
-      const addKey = await yesNo(rl, "\n  Also add an API key as fallback?", false);
-      if (addKey) await pickAndEnterKey(rl);
-    }
+    await setupAI(rl);
     await setupWorkdayHours(rl);
     await setupLinear(rl);
     await setupSlack(rl);

@@ -289,6 +289,7 @@
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#how-it-works">How it works</a>
+    <a href="#connectors">Connectors</a>
     <a href="#ai">AI</a>
     <a href="#install">Install</a>
     <a href="https://github.com/emin93/workweave">GitHub</a>
@@ -431,29 +432,51 @@
 <section id="ai">
   <h2>AI that runs anywhere</h2>
   <p class="section-sub">
-    Workweave auto-detects the best available provider on every run — no flags needed.
-    No key? No problem — download the local model once and run forever.
+    Pick your provider once in <code>workweave setup</code> — it's saved and used on every run.
+    Override anytime with <code>--provider</code>.
   </p>
   <div class="providers">
     <div class="provider">
-      <div class="provider-rank">PRIORITY 1</div>
-      <h3>Local model</h3>
-      <p>Qwen 2.5 1.5B via <code>node-llama-cpp</code>. ~1 GB download, runs on CPU, no API key required.</p>
-    </div>
-    <div class="provider">
-      <div class="provider-rank">PRIORITY 2</div>
       <h3>Anthropic Claude</h3>
-      <p>Uses <code>claude-haiku-4-5</code> by default. Set <code>ANTHROPIC_API_KEY</code> to enable.</p>
+      <p>Uses <code>claude-haiku-4-5</code>. Fast, hosted. Requires an <code>ANTHROPIC_API_KEY</code>.</p>
     </div>
     <div class="provider">
-      <div class="provider-rank">PRIORITY 3</div>
       <h3>OpenAI</h3>
-      <p>Uses <code>gpt-4o-mini</code> by default. Set <code>OPENAI_API_KEY</code> to enable.</p>
+      <p>Uses <code>gpt-4o-mini</code>. Fast, hosted. Requires an <code>OPENAI_API_KEY</code>.</p>
+    </div>
+    <div class="provider">
+      <h3>Local model</h3>
+      <p>Qwen 2.5 1.5B via <code>node-llama-cpp</code>. Runs on CPU, fully private, no API key needed.</p>
     </div>
   </div>
-  <p style="margin-top:1.5rem;color:var(--muted);font-size:0.9rem;">
-    Force a specific provider with <code>--provider local|anthropic|openai</code>.
-  </p>
+</section>
+
+<!-- ── Connectors ── -->
+<section id="connectors">
+  <h2>Connectors</h2>
+  <p class="section-sub">Workweave pulls signals from where your work actually lives. More connectors coming.</p>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">🐙</div>
+      <h3>GitHub</h3>
+      <p>Open pull requests, requested reviews, assigned issues, and CI status across your repos.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📐</div>
+      <h3>Linear</h3>
+      <p>Assigned issues and in-progress tickets from your Linear workspace.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">💬</div>
+      <h3>Slack</h3>
+      <p>Direct messages, thread replies, and <code>@mentions</code> that need your attention.</p>
+    </div>
+    <div class="feature" style="border-style:dashed;opacity:0.5;">
+      <div class="feature-icon">＋</div>
+      <h3>More coming</h3>
+      <p>Jira, Notion, GitHub Discussions, and more. Open an issue to request a connector.</p>
+    </div>
+  </div>
 </section>
 
 <!-- ── Install ── -->

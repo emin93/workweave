@@ -76,10 +76,11 @@ Flags:
   --connectors        Comma-separated list of connectors to use
 
 Environment variables:
+  AI_PROVIDER         Configured AI provider: anthropic | openai | local (set by setup)
   GITHUB_TOKEN        GitHub personal access token (repo scope)
-  ANTHROPIC_API_KEY   Anthropic API key (fallback when local model unavailable)
+  ANTHROPIC_API_KEY   Anthropic API key
   ANTHROPIC_MODEL     Model override (default: claude-haiku-4-5)
-  OPENAI_API_KEY      OpenAI API key (fallback when Anthropic unavailable)
+  OPENAI_API_KEY      OpenAI API key
   OPENAI_MODEL        Model override (default: gpt-4o-mini)
   LINEAR_API_KEY      Linear personal API key
   SLACK_USER_TOKEN    Slack user token (xoxp-...)
@@ -100,30 +101,26 @@ async function resolveProvider(
 ): Promise<LLMProvider | null> {
   if (noAi) return null;
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const provider = preferredProvider ?? process.env.AI_PROVIDER as "openai" | "anthropic" | "local" | undefined;
 
-  if (preferredProvider === "local") {
-    if (!modelExists()) {
-      throw new Error("Local model not found. Run `workweave setup` to download it.");
-    }
+  if (!provider) return null;
+
+  if (provider === "local") {
+    if (!modelExists()) throw new Error("Local model not found. Run `workweave setup` to download it.");
     return new LlamaCppProvider(modelPath());
   }
 
-  if (preferredProvider === "anthropic") {
-    if (!anthropicKey) throw new Error("ANTHROPIC_API_KEY is required when --provider anthropic is set.");
-    return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
+  if (provider === "anthropic") {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error("ANTHROPIC_API_KEY not set. Run `workweave setup` to configure it.");
+    return new AnthropicProvider({ apiKey: key, model: process.env.ANTHROPIC_MODEL });
   }
 
-  if (preferredProvider === "openai") {
-    if (!openaiKey) throw new Error("OPENAI_API_KEY is required when --provider openai is set.");
-    return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
+  if (provider === "openai") {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error("OPENAI_API_KEY not set. Run `workweave setup` to configure it.");
+    return new OpenAIProvider({ apiKey: key, model: process.env.OPENAI_MODEL });
   }
-
-  // Auto-detect: local → Anthropic → OpenAI, silently fall back to rules if none configured
-  if (modelExists()) return new LlamaCppProvider(modelPath());
-  if (anthropicKey) return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
-  if (openaiKey) return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
 
   return null;
 }
