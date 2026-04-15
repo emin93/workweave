@@ -116,19 +116,23 @@ export class LlamaCppProvider implements LLMProvider {
     return existsSync(this._modelPath);
   }
 
+  // node-llama-cpp is ESM-only with top-level await, so require() cannot load
+  // it. This function bypasses TypeScript's import()->require() transform and
+  // calls the real ESM dynamic import loader instead.
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  private static _esmImport = new Function("m", "return import(m)") as
+    (m: string) => Promise<typeof import("node-llama-cpp")>;
+
   private async _load(): Promise<void> {
     if (this._model) return;
-    // Dynamic import so the package is only loaded when actually used.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const llama = require("node-llama-cpp");
-    this._llama = await llama.getLlama({ gpu: false });
+    const { getLlama } = await LlamaCppProvider._esmImport("node-llama-cpp");
+    this._llama = await getLlama({ gpu: false });
     this._model = await this._llama.loadModel({ modelPath: this._modelPath });
   }
 
   async complete(prompt: string): Promise<string> {
     await this._load();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { LlamaChatSession } = require("node-llama-cpp");
+    const { LlamaChatSession } = await LlamaCppProvider._esmImport("node-llama-cpp");
     const context = await this._model.createContext({ contextSize: 4096 });
     const session = new LlamaChatSession({
       contextSequence: context.getSequence(),

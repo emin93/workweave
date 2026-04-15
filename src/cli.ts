@@ -167,7 +167,10 @@ async function run() {
   let synthesisMode: "ai" | "rules" = "rules";
 
   if (provider) {
-    const out = await aiSynthesize(artifacts, provider);
+    const out = await aiSynthesize(artifacts, provider, {
+      info: (msg) => process.stderr.write(`[info] ${msg}\n`),
+      warn: (msg) => process.stderr.write(`[warn] ${msg}\n`),
+    });
     clusters = out.clusters;
     synthesisMode = out.mode;
   } else {

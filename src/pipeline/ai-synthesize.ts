@@ -249,10 +249,21 @@ function parseResponse(
       return true;
     });
 
+    // Deduplicate: each artifact can only appear in one cluster (first wins).
+    // Small models sometimes repeat clusters or reassign the same artifacts.
+    const claimedIds = new Set<string>();
+    const deduped: LLMCluster[] = [];
     for (const cluster of validClusters) {
-      cluster.artifactIds = cluster.artifactIds.filter((id) =>
-        artifactIds.has(id)
+      cluster.artifactIds = cluster.artifactIds.filter(
+        (id) => artifactIds.has(id) && !claimedIds.has(id)
       );
+      if (cluster.artifactIds.length === 0) continue;
+      cluster.artifactIds.forEach((id) => claimedIds.add(id));
+      deduped.push(cluster);
+    }
+    const uniqueClusters = deduped;
+
+    for (const cluster of uniqueClusters) {
       if (!VALID_CATEGORIES.has(cluster.category)) {
         cluster.category = "other";
       }
@@ -265,30 +276,23 @@ function parseResponse(
       cluster.summary = cluster.summary || "";
     }
 
-    const assignedIds = new Set(
-      validClusters.flatMap((c) => c.artifactIds)
-    );
     const unassigned = artifacts
-      .filter((a) => !assignedIds.has(a.id))
-      .map((a) => a.id);
+      .filter((a) => !claimedIds.has(a.id));
 
-    if (unassigned.length > 0) {
-      for (const id of unassigned) {
-        const artifact = artifacts.find((a) => a.id === id)!;
-        validClusters.push({
-          artifactIds: [id],
-          title: artifact.title,
-          summary: artifact.connectorId,
-          category: "other",
-          priorityScore: 20,
-          priorityReasons: [],
-          estimatedMinutes: 15,
-        });
-      }
+    for (const artifact of unassigned) {
+      uniqueClusters.push({
+        artifactIds: [artifact.id],
+        title: artifact.title,
+        summary: artifact.connectorId,
+        category: "other",
+        priorityScore: 20,
+        priorityReasons: [],
+        estimatedMinutes: 15,
+      });
     }
 
     return {
-      clusters: validClusters.filter((c) => c.artifactIds.length > 0),
+      clusters: uniqueClusters,
       reasoning: parsed.reasoning,
     };
   } catch {
