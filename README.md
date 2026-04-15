@@ -2,8 +2,8 @@
 
 > Turn scattered developer signals into a focused, prioritized plan for your day.
 
+[![npm version](https://img.shields.io/npm/v/workweave.svg)](https://www.npmjs.com/package/workweave)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![npm version](https://img.shields.io/badge/version-0.2.0-blue.svg)](package.json)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
 Workweave is a CLI tool that ingests activity from **GitHub**, **Linear**, and **Slack**, then synthesizes a time-boxed workday plan — either using deterministic prioritization rules or an AI model of your choice (local, Anthropic, or OpenAI).
@@ -42,22 +42,17 @@ Slack  ─┘                                                      ▲
 ## Install
 
 ```bash
+npm install -g workweave
+```
+
+That's it. The `workweave` command is now available globally.
+
+**From source** (for contributors):
+
+```bash
 git clone https://github.com/emin93/workweave.git
 cd workweave
-npm install
-npm run build
-```
-
-To use the `workweave` command globally:
-
-```bash
-npm link
-```
-
-Or run directly without linking:
-
-```bash
-node dist/cli.js <command>
+npm install && npm run build && npm link
 ```
 
 ---
