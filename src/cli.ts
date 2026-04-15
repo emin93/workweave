@@ -19,7 +19,7 @@ interface CliOptions {
   command: "detect" | "setup" | "synth";
   connectors: string[];
   workdayMinutes: number;
-  ai: boolean;
+  noAi: boolean;
   json: boolean;
   provider?: "openai" | "anthropic" | "local";
 }
@@ -36,7 +36,7 @@ function parseArgs(argv: string[]): CliOptions {
     command,
     connectors: ["github"],
     workdayMinutes: Number(process.env.WORKDAY_MINUTES ?? "480"),
-    ai: false,
+    noAi: false,
     json: false,
   };
 
@@ -44,7 +44,7 @@ function parseArgs(argv: string[]): CliOptions {
     const a = args[i];
     if (a === "--connectors") opts.connectors = (args[++i] ?? "github").split(",").map((x) => x.trim()).filter(Boolean);
     else if (a === "--workday-minutes") opts.workdayMinutes = Number(args[++i] ?? "480");
-    else if (a === "--ai") opts.ai = true;
+    else if (a === "--no-ai") opts.noAi = true;
     else if (a === "--json") opts.json = true;
     else if (a === "--provider") {
       const val = args[++i] ?? "";
@@ -66,11 +66,11 @@ Usage:
   workweave setup
   workweave detect [--connectors github,linear,slack] [--json]
   workweave synth  [--connectors github,linear,slack] [--workday-minutes 480]
-                   [--ai] [--provider local|anthropic|openai] [--json]
+                   [--no-ai] [--provider local|anthropic|openai] [--json]
 
 Flags:
   --json              Machine-readable JSON output (default: formatted terminal)
-  --ai                Enable AI synthesis
+  --no-ai             Skip AI synthesis and use rules-based prioritization
   --provider <name>   Force a specific AI provider (local | anthropic | openai)
   --workday-minutes   Available minutes in your workday (default: 480)
   --connectors        Comma-separated list of connectors to use
@@ -95,10 +95,10 @@ function buildRegistry(): ConnectorRegistry {
 }
 
 async function resolveProvider(
-  useAi: boolean,
+  noAi: boolean,
   preferredProvider?: "openai" | "anthropic" | "local"
 ): Promise<LLMProvider | null> {
-  if (!useAi) return null;
+  if (noAi) return null;
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
@@ -120,12 +120,12 @@ async function resolveProvider(
     return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
   }
 
-  // Auto-detect: local → Anthropic → OpenAI
+  // Auto-detect: local → Anthropic → OpenAI, silently fall back to rules if none configured
   if (modelExists()) return new LlamaCppProvider(modelPath());
   if (anthropicKey) return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
   if (openaiKey) return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
 
-  throw new Error("No AI provider found. Run `workweave setup` to download a local model or add an API key.");
+  return null;
 }
 
 loadLocalEnv();
@@ -171,7 +171,7 @@ async function run() {
   const { events, errors } = await ingestion.fetchAll(opts.connectors);
   const artifacts = normalize(events);
 
-  const provider = await resolveProvider(opts.ai, opts.provider);
+  const provider = await resolveProvider(opts.noAi, opts.provider);
 
   let clusters;
   let synthesisMode: "ai" | "rules" = "rules";

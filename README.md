@@ -119,30 +119,30 @@ Pass `--connectors github,linear,slack` to check specific sources only.
 Fetch signals and produce a workday plan.
 
 ```bash
-# Rules-based (no AI, works offline)
+# Synthesize your day (AI auto-detected)
 workweave synth
 
-# With AI — auto-detects provider (local → Anthropic → OpenAI)
-workweave synth --ai
-
 # Force a specific provider
-workweave synth --ai --provider anthropic
+workweave synth --provider anthropic
 
 # Adjust available time
 workweave synth --workday-minutes 360
 
 # Machine-readable output
-workweave synth --ai --json
+workweave synth --json
 
 # Limit to specific connectors
 workweave synth --connectors github,linear
+
+# Skip AI and use rules-based prioritization only
+workweave synth --no-ai
 ```
 
 ---
 
 ## AI providers
 
-Workweave supports three AI backends. When `--ai` is set and no `--provider` is specified, it auto-detects in this order:
+Workweave auto-detects the best available AI provider on every run. Configure one and it just works — no flags needed. The detection order is:
 
 | Priority | Provider | How to configure |
 |----------|----------|-----------------|
