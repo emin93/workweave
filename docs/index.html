@@ -151,7 +151,7 @@
     .dot-y { background: #febc2e; }
     .dot-g { background: #28c840; }
     .terminal-title { flex: 1; text-align: center; font-size: 0.78rem; color: var(--muted); }
-    .terminal-body { padding: 1.5rem 1.75rem; font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace; font-size: 0.85rem; line-height: 1.8; overflow-x: auto; }
+    .terminal-body { padding: 1.5rem 1.75rem; font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace; font-size: 0.85rem; line-height: 1.8; overflow-x: auto; white-space: pre; }
 
     .t-prompt { color: var(--green); }
     .t-cmd    { color: var(--text); }
@@ -254,6 +254,8 @@
       font-size: 0.875rem;
       line-height: 2;
       margin-top: 2rem;
+      white-space: pre;
+      overflow-x: auto;
     }
     .install-block .t-prompt { user-select: none; }
 
