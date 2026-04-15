@@ -19,7 +19,7 @@ async function githubApi<T>(
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
-          "User-Agent": "workday-synthesizer",
+          "User-Agent": "workweave",
           "X-GitHub-Api-Version": "2022-11-28",
         },
       },
@@ -68,10 +68,10 @@ export class GitHubConnector implements Connector {
         reason: "GITHUB_TOKEN is not set",
         setupInstructions: [
           "1. Go to github.com/settings/tokens → Generate new token (classic)",
-          "2. Name it 'Workday Synthesizer', set expiration",
+          "2. Name it 'Workweave', set expiration",
           "3. Select scope: repo",
           "4. Generate and copy the token",
-          "5. Run `workday setup` and paste it when prompted",
+          "5. Run `workweave setup` and paste it when prompted",
         ].join("\n"),
       };
     }
@@ -84,7 +84,7 @@ export class GitHubConnector implements Connector {
       return {
         available: false,
         reason: err instanceof Error ? err.message : "GitHub token validation failed",
-        setupInstructions: "Run `workday setup` to update your GITHUB_TOKEN.",
+        setupInstructions: "Run `workweave setup` to update your GITHUB_TOKEN.",
       };
     }
   }

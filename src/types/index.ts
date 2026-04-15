@@ -76,7 +76,7 @@ export type TaskCategory =
 
 export type AIProviderType = "openai" | "anthropic" | "ollama" | "local";
 
-export interface WorkdayPlan {
+export interface WorkweavePlan {
   id: string;
   date: string;
   clusters: TaskCluster[];

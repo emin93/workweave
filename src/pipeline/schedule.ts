@@ -1,4 +1,4 @@
-import type { TaskCluster, WorkdayPlan } from "../types";
+import type { TaskCluster, WorkweavePlan } from "../types";
 import { randomUUID } from "crypto";
 
 const AFFINITY_THRESHOLD = 10;
@@ -14,7 +14,7 @@ const AFFINITY_THRESHOLD = 10;
 export function schedule(
   clusters: TaskCluster[],
   workdayMinutes: number
-): WorkdayPlan {
+): WorkweavePlan {
   const ordered = nudgeRelatedItems([...clusters]);
 
   let minutesUsed = 0;

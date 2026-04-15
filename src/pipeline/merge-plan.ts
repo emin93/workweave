@@ -2,7 +2,7 @@ import type { Artifact, TaskCluster } from "../types";
 import { stableClusterId } from "./cluster-id";
 import { buildActions, buildSummary, inferCategory } from "./prioritize";
 
-/** Calendar date string aligned with `WorkdayPlan.date` / `getCachedPlan` (UTC YYYY-MM-DD). */
+/** Calendar date string aligned with `WorkweavePlan.date` / `getCachedPlan` (UTC YYYY-MM-DD). */
 export function calendarTodayString(): string {
   return new Date().toISOString().split("T")[0];
 }

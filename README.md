@@ -1,4 +1,4 @@
-# Workday Synthesizer
+# Workweave
 
 > Turn scattered developer signals into a focused, prioritized plan for your day.
 
@@ -6,7 +6,7 @@
 [![npm version](https://img.shields.io/badge/version-0.2.0-blue.svg)](package.json)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-Workday Synthesizer is a CLI tool that ingests activity from **GitHub**, **Linear**, and **Slack**, then synthesizes a time-boxed workday plan — either using deterministic prioritization rules or an AI model of your choice (local, Anthropic, or OpenAI).
+Workweave is a CLI tool that ingests activity from **GitHub**, **Linear**, and **Slack**, then synthesizes a time-boxed workday plan — either using deterministic prioritization rules or an AI model of your choice (local, Anthropic, or OpenAI).
 
 ---
 
@@ -33,8 +33,8 @@ Slack  ─┘                                                      ▲
 - **Three AI providers** — local model (no key required), Anthropic Claude, or OpenAI
 - **Rules mode** — works fully offline, no API key needed
 - **JSON output** — pipe into scripts, dashboards, or other tools with `--json`
-- **Interactive setup** — guided `workday setup` wizard configures everything
-- **Connector detection** — `workday detect` checks which sources are ready before you run
+- **Interactive setup** — guided `workweave setup` wizard configures everything
+- **Connector detection** — `workweave detect` checks which sources are ready before you run
 - **Configurable workday budget** — schedule work to fit your actual available hours
 
 ---
@@ -42,13 +42,13 @@ Slack  ─┘                                                      ▲
 ## Install
 
 ```bash
-git clone https://github.com/emin93/workday-synthesizer.git
-cd workday-synthesizer
+git clone https://github.com/emin93/workweave.git
+cd workweave
 npm install
 npm run build
 ```
 
-To use the `workday` command globally:
+To use the `workweave` command globally:
 
 ```bash
 npm link
@@ -67,7 +67,7 @@ node dist/cli.js <command>
 **1. Run the interactive setup wizard:**
 
 ```bash
-workday setup
+workweave setup
 ```
 
 The wizard walks you through:
@@ -82,33 +82,33 @@ All credentials are stored in a local `.env` file that is never committed.
 **2. Check that your connectors are ready:**
 
 ```bash
-workday detect --connectors github,linear,slack
+workweave detect --connectors github,linear,slack
 ```
 
 **3. Synthesize your day:**
 
 ```bash
-workday synth --connectors github,linear,slack
+workweave synth --connectors github,linear,slack
 ```
 
 ---
 
 ## Commands
 
-### `workday setup`
+### `workweave setup`
 
 Interactive wizard to configure connectors and AI.
 
 ```bash
-workday setup
+workweave setup
 ```
 
-### `workday detect`
+### `workweave detect`
 
 Check which connectors are configured and reachable.
 
 ```bash
-workday detect --connectors github,linear,slack
+workweave detect --connectors github,linear,slack
 ```
 
 ```
@@ -117,36 +117,36 @@ workday detect --connectors github,linear,slack
   slack    ✗  SLACK_USER_TOKEN not set
 ```
 
-### `workday synth`
+### `workweave synth`
 
 Fetch signals and produce a workday plan.
 
 ```bash
 # Rules-based (no AI, works offline)
-workday synth --connectors github,linear
+workweave synth --connectors github,linear
 
 # With AI — auto-detects provider (local → Anthropic → OpenAI)
-workday synth --connectors github,linear,slack --ai
+workweave synth --connectors github,linear,slack --ai
 
 # Force a specific provider
-workday synth --connectors github --ai --provider anthropic
+workweave synth --connectors github --ai --provider anthropic
 
 # Adjust available time
-workday synth --connectors github --workday-minutes 360
+workweave synth --connectors github --workday-minutes 360
 
 # Machine-readable output
-workday synth --connectors github --ai --json
+workweave synth --connectors github --ai --json
 ```
 
 ---
 
 ## AI providers
 
-Workday Synthesizer supports three AI backends. When `--ai` is set and no `--provider` is specified, it auto-detects in this order:
+Workweave supports three AI backends. When `--ai` is set and no `--provider` is specified, it auto-detects in this order:
 
 | Priority | Provider | How to configure |
 |----------|----------|-----------------|
-| 1 | **Local model** (Llama, via `node-llama-cpp`) | Run `workday setup` to download (~4 GB, CPU-only, no key) |
+| 1 | **Local model** (Llama, via `node-llama-cpp`) | Run `workweave setup` to download (~4 GB, CPU-only, no key) |
 | 2 | **Anthropic** (`claude-haiku-4-5`) | Set `ANTHROPIC_API_KEY` |
 | 3 | **OpenAI** (`gpt-4o-mini`) | Set `OPENAI_API_KEY` |
 
@@ -167,7 +167,7 @@ You can force a provider with `--provider local|anthropic|openai`.
 | `OPENAI_MODEL` | Model override (default: `gpt-4o-mini`) |
 | `WORKDAY_MINUTES` | Available minutes per day (default: `480`) |
 
-Variables can be set in a local `.env` file at the project root (created by `workday setup`) or exported in your shell.
+Variables can be set in a local `.env` file at the project root (created by `workweave setup`) or exported in your shell.
 
 ---
 
@@ -176,7 +176,7 @@ Variables can be set in a local `.env` file at the project root (created by `wor
 Add `--json` to any command for machine-readable output. Progress logs are suppressed and only the result is written to stdout.
 
 ```bash
-workday synth --connectors github --json | jq '.plan.blocks[].title'
+workweave synth --connectors github --json | jq '.plan.blocks[].title'
 ```
 
 **`synth` output shape:**

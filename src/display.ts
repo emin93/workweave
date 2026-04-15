@@ -1,4 +1,4 @@
-import type { WorkdayPlan, ConnectorInfo, TaskCluster, TaskCategory } from "./types";
+import type { WorkweavePlan, ConnectorInfo, TaskCluster, TaskCategory } from "./types";
 
 // ── ANSI helpers ───────────────────────────────────────────────────────────
 
@@ -178,7 +178,7 @@ function printCluster(cluster: TaskCluster, index: number): void {
 }
 
 export function printPlan(
-  plan: WorkdayPlan,
+  plan: WorkweavePlan,
   meta: { connectors: string[]; rawEvents: number }
 ): void {
   const scheduled = plan.clusters.filter((c) => c.scheduledSlot);
@@ -191,7 +191,7 @@ export function printPlan(
   console.log();
   console.log(hr());
   console.log(
-    `  ${styled(c.bold, "Workday Plan")}` +
+    `  ${styled(c.bold, "Workweave Plan")}` +
     styled(c.dim, `  ·  ${formatDate(plan.generatedAt)}`) +
     styled(c.dim, `  ·  ${meta.connectors.join(", ")}`) +
     styled(c.dim, `  ·  ${modeStr}`)

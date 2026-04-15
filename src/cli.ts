@@ -60,13 +60,13 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function printHelp() {
-  console.log(`Workday Synthesizer
+  console.log(`Workweave
 
 Usage:
-  workday setup
-  workday detect [--connectors github,linear,slack] [--json]
-  workday synth  [--connectors github,linear,slack] [--workday-minutes 480]
-                 [--ai] [--provider local|anthropic|openai] [--json]
+  workweave setup
+  workweave detect [--connectors github,linear,slack] [--json]
+  workweave synth  [--connectors github,linear,slack] [--workday-minutes 480]
+                   [--ai] [--provider local|anthropic|openai] [--json]
 
 Flags:
   --json              Machine-readable JSON output (default: formatted terminal)
@@ -105,7 +105,7 @@ async function resolveProvider(
 
   if (preferredProvider === "local") {
     if (!modelExists()) {
-      throw new Error("Local model not found. Run `workday setup` to download it.");
+      throw new Error("Local model not found. Run `workweave setup` to download it.");
     }
     return new LlamaCppProvider(modelPath());
   }
@@ -125,7 +125,7 @@ async function resolveProvider(
   if (anthropicKey) return new AnthropicProvider({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL });
   if (openaiKey) return new OpenAIProvider({ apiKey: openaiKey, model: process.env.OPENAI_MODEL });
 
-  throw new Error("No AI provider found. Run `workday setup` to download a local model or add an API key.");
+  throw new Error("No AI provider found. Run `workweave setup` to download a local model or add an API key.");
 }
 
 loadLocalEnv();

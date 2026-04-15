@@ -67,7 +67,7 @@ async function setupGitHub(rl: ReturnType<typeof createInterface>): Promise<void
 
   info("");
   info("  1. Go to github.com/settings/tokens → Generate new token (classic)");
-  info("  2. Name it 'Workday Synthesizer' and set an expiration");
+  info("  2. Name it 'Workweave' and set an expiration");
   info("  3. Select scope: repo");
   info("  4. Click Generate token and copy it");
   const token = await ask(rl, "Paste GITHUB_TOKEN (input is visible):");
@@ -88,7 +88,7 @@ async function setupLocalModel(
     if (!replace) return true;
   } else {
     info(`  Model : ${MODEL_NAME} Q4_K_M`);
-    info(`  Size  : ~${MODEL_SIZE_MB} MB  (downloaded once, stored in ~/.workday/models/)`);
+    info(`  Size  : ~${MODEL_SIZE_MB} MB  (downloaded once, stored in ~/.workweave/models/)`);
     info(`  Speed : ~5–15 s per synthesis on CPU`);
     info(`  Key   : none required`);
 
@@ -139,7 +139,7 @@ async function setupAPIProvider(
   } else {
     const configure = await yesNo(rl, "Add an API key now?", false);
     if (configure) await pickAndEnterKey(rl);
-    else info("  Skipped. Run `workday setup` again to add one later.");
+    else info("  Skipped. Run `workweave setup` again to add one later.");
   }
 }
 
@@ -236,7 +236,7 @@ async function setupSlack(rl: ReturnType<typeof createInterface>): Promise<void>
 
   info("");
   info("  1. Go to api.slack.com/apps → Create New App → From scratch");
-  info("  2. Name it (e.g. 'Workday Synthesizer') and pick your workspace");
+  info("  2. Name it (e.g. 'Workweave') and pick your workspace");
   info("  3. Sidebar: OAuth & Permissions → User Token Scopes → add:");
   info("       search:read  users:read  channels:read  groups:read  im:read");
   info("  4. Scroll up → Install to Workspace → Authorize");
@@ -253,11 +253,11 @@ function printNextSteps(): void {
   info("Local config: " + envFilePath());
   info("");
   info("  Try it out:");
-  info("    node dist/cli.js detect --connectors github,linear,slack");
-  info("    node dist/cli.js synth  --connectors github --ai");
+  info("    workweave detect --connectors github,linear,slack");
+  info("    workweave synth  --connectors github --ai");
   info("");
   info("  Run setup again any time to add or update credentials:");
-  info("    node dist/cli.js setup");
+  info("    workweave setup");
   info("");
 }
 
@@ -269,7 +269,7 @@ export async function runSetup(): Promise<void> {
   try {
     console.log("");
     hr();
-    console.log("  Workday Synthesizer — setup");
+    console.log("  Workweave — setup");
     hr();
     info("");
     info("  Configures connectors and AI synthesis.");

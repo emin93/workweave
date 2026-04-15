@@ -1,14 +1,14 @@
 {
-  "name": "workday-synthesizer",
-  "description": "CLI tool that synthesizes your workday from scattered developer signals into a focused prioritized plan",
+  "name": "workweave",
+  "description": "CLI tool that weaves scattered developer signals into a focused, prioritized workday plan",
   "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emin93/workday-synthesizer"
+    "url": "https://github.com/emin93/workweave"
   },
   "bin": {
-    "workday": "dist/cli.js"
+    "workweave": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

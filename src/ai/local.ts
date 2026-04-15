@@ -13,7 +13,7 @@ const HF_URL =
   MODEL_FILE;
 
 export function modelsDir(): string {
-  return join(homedir(), ".workday", "models");
+  return join(homedir(), ".workweave", "models");
 }
 
 export function modelPath(): string {
@@ -50,7 +50,7 @@ export function downloadModel(onProgress: ProgressCallback): Promise<void> {
       transport
         .get(
           url,
-          { headers: { "User-Agent": "workday-synthesizer/1.0" } },
+          { headers: { "User-Agent": "workweave/1.0" } },
           (res) => {
             const { statusCode, headers: resHeaders } = res;
 
