@@ -77,13 +77,13 @@ All credentials are stored in a local `.env` file that is never committed.
 **2. Check that your connectors are ready:**
 
 ```bash
-workweave detect --connectors github,linear,slack
+workweave detect
 ```
 
 **3. Synthesize your day:**
 
 ```bash
-workweave synth --connectors github,linear,slack
+workweave synth
 ```
 
 ---
@@ -103,7 +103,7 @@ workweave setup
 Check which connectors are configured and reachable.
 
 ```bash
-workweave detect --connectors github,linear,slack
+workweave detect
 ```
 
 ```
@@ -112,25 +112,30 @@ workweave detect --connectors github,linear,slack
   slack    ✗  SLACK_USER_TOKEN not set
 ```
 
+Pass `--connectors github,linear,slack` to check specific sources only.
+
 ### `workweave synth`
 
 Fetch signals and produce a workday plan.
 
 ```bash
 # Rules-based (no AI, works offline)
-workweave synth --connectors github,linear
+workweave synth
 
 # With AI — auto-detects provider (local → Anthropic → OpenAI)
-workweave synth --connectors github,linear,slack --ai
+workweave synth --ai
 
 # Force a specific provider
-workweave synth --connectors github --ai --provider anthropic
+workweave synth --ai --provider anthropic
 
 # Adjust available time
-workweave synth --connectors github --workday-minutes 360
+workweave synth --workday-minutes 360
 
 # Machine-readable output
-workweave synth --connectors github --ai --json
+workweave synth --ai --json
+
+# Limit to specific connectors
+workweave synth --connectors github,linear
 ```
 
 ---
@@ -171,7 +176,7 @@ Variables can be set in a local `.env` file at the project root (created by `wor
 Add `--json` to any command for machine-readable output. Progress logs are suppressed and only the result is written to stdout.
 
 ```bash
-workweave synth --connectors github --json | jq '.plan.blocks[].title'
+workweave synth --json | jq '.plan.blocks[].title'
 ```
 
 **`synth` output shape:**
