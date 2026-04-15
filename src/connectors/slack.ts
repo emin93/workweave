@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import * as https from "https";
 import type {
   Connector,
@@ -6,8 +5,6 @@ import type {
   ConnectorCapability,
   RawEvent,
 } from "../types";
-
-const SLACK_SECRET_KEY = "workday.slack.token";
 
 const userCache = new Map<string, string>();
 
@@ -50,10 +47,7 @@ async function slackApi<T>(
   });
 }
 
-async function resolveUserId(
-  token: string,
-  userId: string
-): Promise<string> {
+async function resolveUserId(token: string, userId: string): Promise<string> {
   if (userCache.has(userId)) return userCache.get(userId)!;
   try {
     const resp = await slackApi<UserInfoResponse>(token, "users.info", {
@@ -97,22 +91,15 @@ function isDmChannel(channelId: string | undefined): boolean {
   return !!channelId && channelId.startsWith("D");
 }
 
-async function parseMatch(
-  token: string,
-  match: SearchMatch
-): Promise<Record<string, unknown>> {
+async function parseMatch(token: string, match: SearchMatch): Promise<Record<string, unknown>> {
   const channelId = match.channel?.id ?? "";
   const rawChannelName = match.channel?.name ?? "";
   const isDm = isDmChannel(channelId);
 
   let channelLabel: string;
-  if (isDm) {
-    channelLabel = "DM";
-  } else if (rawChannelName && !/^[A-Z0-9]+$/.test(rawChannelName)) {
-    channelLabel = rawChannelName;
-  } else {
-    channelLabel = rawChannelName || "unknown";
-  }
+  if (isDm) channelLabel = "DM";
+  else if (rawChannelName && !/^[A-Z0-9]+$/.test(rawChannelName)) channelLabel = rawChannelName;
+  else channelLabel = rawChannelName || "unknown";
 
   const rawFrom = match.username ?? match.user ?? "someone";
   let fromDisplay = rawFrom;
@@ -142,59 +129,27 @@ export class SlackConnector implements Connector {
   name = "Slack";
   icon = "message-square";
 
-  private _context: vscode.ExtensionContext | null = null;
-
-  setContext(context: vscode.ExtensionContext) {
-    this._context = context;
-  }
-
   async detect(): Promise<ConnectorStatus> {
-    if (!this._context) {
+    if (!process.env.SLACK_USER_TOKEN) {
       return {
         available: false,
-        reason: "Extension context not set",
-        setupInstructions: "Internal error — restart the extension.",
-      };
-    }
-
-    const token = await this._context.secrets.get(SLACK_SECRET_KEY);
-    if (!token) {
-      return {
-        available: false,
-        reason: "No Slack token configured",
-        setupInstructions: [
-          "To connect Slack, you need a User OAuth Token (xoxp-...):",
-          "",
-          "1. Go to https://api.slack.com/apps and create a new app",
-          "2. Under OAuth & Permissions, add these User Token Scopes:",
-          "   • search:read",
-          "   • users:read",
-          "   • channels:read",
-          "   • groups:read",
-          "   • im:read",
-          "3. Install the app to your workspace",
-          '4. Copy the "User OAuth Token" (starts with xoxp-)',
-          '5. Run command "Workday: Set Slack Token" in Cursor',
-        ].join("\n"),
-      };
-    }
-
-    try {
-      await slackApi(token, "auth.test");
-      return { available: true, authMethod: "token" };
-    } catch {
-      return {
-        available: false,
-        reason: "Slack token is invalid or expired",
+        reason: "SLACK_USER_TOKEN is not set",
         setupInstructions:
-          'Run "Workday: Set Slack Token" to update your token.',
+          "Set SLACK_USER_TOKEN (xoxp-...) with scopes: search:read, users:read, channels:read, groups:read, im:read.",
       };
     }
+    return { available: true, authMethod: "token" };
   }
 
   async authenticate(): Promise<boolean> {
-    const status = await this.detect();
-    return status.available;
+    const token = process.env.SLACK_USER_TOKEN;
+    if (!token) return false;
+    try {
+      await slackApi(token, "auth.test");
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   getCapabilities(): ConnectorCapability[] {
@@ -207,9 +162,7 @@ export class SlackConnector implements Connector {
   }
 
   async fetch(): Promise<RawEvent[]> {
-    if (!this._context) return [];
-
-    const token = await this._context.secrets.get(SLACK_SECRET_KEY);
+    const token = process.env.SLACK_USER_TOKEN;
     if (!token) return [];
 
     const events: RawEvent[] = [];
@@ -217,7 +170,6 @@ export class SlackConnector implements Connector {
 
     const authInfo = await slackApi<AuthTestResponse>(token, "auth.test");
     const userId = authInfo.user_id;
-
     const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
 
     try {
@@ -230,7 +182,6 @@ export class SlackConnector implements Connector {
 
       for (const match of results.messages?.matches ?? []) {
         if (Number(match.ts) < oneDayAgo) continue;
-
         const parsed = await parseMatch(token, match);
         events.push({
           id: `slack-mention-${match.iid ?? match.ts}`,
@@ -241,81 +192,16 @@ export class SlackConnector implements Connector {
         });
       }
     } catch {
-      // search.messages might not be available with all token types
-    }
-
-    try {
-      const results = await slackApi<SearchResponse>(token, "search.messages", {
-        query: `to:<@${userId}>`,
-        sort: "timestamp",
-        sort_dir: "desc",
-        count: "10",
-      });
-
-      const existingIds = new Set(events.map((e) => e.id));
-      for (const match of results.messages?.matches ?? []) {
-        if (Number(match.ts) < oneDayAgo) continue;
-
-        const id = `slack-dm-${match.iid ?? match.ts}`;
-        if (existingIds.has(id)) continue;
-
-        const parsed = await parseMatch(token, match);
-        events.push({
-          id,
-          connectorId: this.id,
-          sourceType: "slack_message",
-          rawPayload: parsed,
-          fetchedAt: now,
-        });
-      }
-    } catch {
-      // Silently skip
+      // Optional in some workspaces/tokens.
     }
 
     return events;
-  }
-
-  static async promptForToken(
-    context: vscode.ExtensionContext
-  ): Promise<boolean> {
-    const token = await vscode.window.showInputBox({
-      title: "Slack User OAuth Token",
-      prompt: "Paste your Slack User OAuth Token (starts with xoxp-)",
-      placeHolder: "xoxp-...",
-      password: true,
-      validateInput: (value) => {
-        if (!value) return "Token is required";
-        if (!value.startsWith("xoxp-") && !value.startsWith("xoxb-")) {
-          return "Token should start with xoxp- or xoxb-";
-        }
-        return null;
-      },
-    });
-
-    if (!token) return false;
-
-    try {
-      await slackApi(token, "auth.test");
-    } catch (err) {
-      vscode.window.showErrorMessage(
-        `Invalid Slack token: ${err instanceof Error ? err.message : err}`
-      );
-      return false;
-    }
-
-    await context.secrets.store(SLACK_SECRET_KEY, token);
-    vscode.window.showInformationMessage(
-      "Slack token saved. Re-run onboarding or sync to use it."
-    );
-    return true;
   }
 }
 
 interface AuthTestResponse {
   ok: boolean;
   user_id: string;
-  team_id: string;
-  user: string;
 }
 
 interface UserInfoResponse {
@@ -334,19 +220,18 @@ interface SearchResponse {
   ok: boolean;
   messages?: {
     matches: SearchMatch[];
-    total: number;
   };
 }
 
 interface SearchMatch {
   iid?: string;
-  ts: string;
-  text: string;
+  ts?: string;
+  text?: string;
   user?: string;
   username?: string;
   permalink?: string;
   channel?: {
-    id: string;
-    name: string;
+    id?: string;
+    name?: string;
   };
 }
