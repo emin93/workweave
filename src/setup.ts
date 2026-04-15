@@ -195,6 +195,33 @@ async function setupLinear(rl: ReturnType<typeof createInterface>): Promise<void
   ok(`LINEAR_API_KEY saved to ${file}`);
 }
 
+async function setupWorkdayHours(rl: ReturnType<typeof createInterface>): Promise<void> {
+  section("Workday hours");
+
+  const current = process.env.WORKDAY_MINUTES
+    ? `${Math.round(Number(process.env.WORKDAY_MINUTES) / 60)} hours`
+    : null;
+
+  if (current) {
+    ok(`Workday is currently set to ${current}.`);
+    const replace = await yesNo(rl, "Change it?", false);
+    if (!replace) return;
+  }
+
+  info("  How many hours do you work per day?");
+  const input = await ask(rl, "Hours per day [8]:");
+  const hours = parseFloat(input || "8");
+
+  if (isNaN(hours) || hours <= 0 || hours > 24) {
+    warn("Invalid value — keeping default of 8 hours.");
+    return;
+  }
+
+  const minutes = Math.round(hours * 60);
+  const file = upsertLocalEnv("WORKDAY_MINUTES", String(minutes));
+  ok(`Workday set to ${hours}h (${minutes} min), saved to ${file}`);
+}
+
 async function setupSlack(rl: ReturnType<typeof createInterface>): Promise<void> {
   section("Slack  (optional)");
 
@@ -258,6 +285,7 @@ export async function runSetup(): Promise<void> {
       const addKey = await yesNo(rl, "\n  Also add an API key as fallback?", false);
       if (addKey) await pickAndEnterKey(rl);
     }
+    await setupWorkdayHours(rl);
     await setupLinear(rl);
     await setupSlack(rl);
 
