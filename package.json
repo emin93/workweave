@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emin93/workweave"
+    "url": "git@github.com:emin93/workweave.git"
   },
   "bin": {
     "workweave": "dist/cli.js"
