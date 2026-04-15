@@ -1,130 +1,90 @@
-# Workday Synthesizer
+# Workday Synthesizer (CLI)
 
-A Cursor / VS Code extension that synthesizes your workday from scattered developer signals into a focused, prioritized plan with one-click execution.
+Workday Synthesizer is now a **CLI-first tool** that turns scattered developer signals into a focused, prioritized plan for your day.
 
-## The Problem
+## Why CLI-first
 
-Developers lose 30–60 minutes every morning context-switching between Slack, issue trackers, GitHub, and meeting notes to figure out what needs attention. Even after identifying tasks, there's friction in starting them — finding the right repo, checking out branches, loading context.
+- decoupled from fast-changing IDE extension APIs
+- reusable in terminal workflows, scripts, and automation
+- easier to test and evolve as a standalone planning engine
 
-## What It Does
+## What it does
 
-- **Ingests signals** from GitHub, Linear, and more
-- **Normalizes and correlates** related items across tools
-- **Prioritizes** using weighted signals (urgency, importance, social pressure, staleness, blocking factor)
-- **Schedules** tasks into your configured workday
-- **Provides one-click execution** — Plan, Review, Open, Done, Snooze
+- Ingests signals from GitHub, Linear, and Slack
+- Normalizes + correlates related items
+- Prioritizes with urgency / importance / social pressure / staleness / blocking factors
+- Schedules work into your workday budget
+- Optionally uses AI (OpenAI-compatible or Ollama) for clustering/titling/prioritization
 
-## Quick Start
-
-### Prerequisites
-
-- [Cursor](https://cursor.com) or VS Code 1.85+
-- [GitHub CLI](https://cli.github.com/) authenticated (`gh auth login`)
-- (Optional) [Linear Connect](https://marketplace.visualstudio.com/items?itemName=linear.linear-connect) extension
-
-### Install & Run
+## Install
 
 ```bash
-# Clone and install
-git clone <repo-url>
-cd workday-synthesizer
 pnpm install
-cd webview && npm install && cd ..
-
-# Build
 pnpm run build
-
-# Launch in Cursor/VS Code
-# Press F5 or use "Run Extension" from the debug panel
 ```
 
-### First Use
+Run from source:
 
-1. Open the **Workday Synthesizer** panel from the activity bar (calendar icon)
-2. Follow the onboarding wizard to detect and configure your connectors
-3. Click **Synthesize My Day** or run `Workday: Synthesize My Day` from the command palette
-
-## Architecture
-
+```bash
+pnpm run dev -- synth --connectors github
 ```
-Extension Host (TypeScript)
-├── Connectors (GitHub CLI, Linear API)
-├── Pipeline (Normalize → Correlate → Prioritize → Schedule)
-├── Execution Engine (Plan, Review, Open URL, Done, Snooze)
-├── Storage (VS Code globalState + secrets)
-└── Onboarding Manager
 
-Webview (React + Tailwind)
-├── Onboarding Wizard
-├── Workday Plan View
-├── Task Cards with Action Buttons
-└── Settings View
+Run built CLI:
+
+```bash
+node dist/cli.js synth --connectors github
 ```
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `Workday: Synthesize My Day` | Fetch signals and generate today's plan |
-| `Workday: Open Settings` | Open the settings view |
-| `Workday: Reset Onboarding` | Re-run the setup wizard |
-
-## Connectors
-
-| Source | Method | What It Fetches |
-|--------|--------|----------------|
-| **GitHub** | `gh` CLI | Assigned PRs, review requests, assigned issues |
-| **Linear** | Auth provider + REST | Assigned issues, active cycle items |
-
-## Task Actions
-
-| Action | What It Does |
-|--------|-------------|
-| **Plan** | Opens Cursor chat with a generated planning prompt |
-| **Review** | Checks out the PR branch and opens a review prompt |
-| **Open** | Opens the source URL in your browser |
-| **Done** | Marks the task as completed |
-| **Snooze** | Hides the task for 2 hours |
-
-## Project Structure
-
-```
-workday-synthesizer/
-  src/
-    extension.ts              # Entry point
-    connectors/               # GitHub, Linear connectors
-    pipeline/                 # Ingest, normalize, correlate, prioritize, schedule
-    execution/                # Action handlers and prompt templates
-    storage/                  # Local storage abstraction
-    onboarding/               # Environment detection and wizard
-    types/                    # Shared TypeScript types
-    webview/                  # Sidebar webview provider
-  webview/
-    src/
-      components/             # React UI components
-      stores/                 # Zustand state management
-      hooks/                  # VS Code bridge hooks
-      styles/                 # Tailwind CSS
-```
-
-## Tech Stack
-
-- **Extension**: TypeScript, esbuild
-- **Webview**: React 18, Tailwind CSS, Zustand, Lucide icons
-- **Build**: esbuild (extension), Vite (webview)
-- **Storage**: VS Code globalState, secrets API
-
-## Development
+### Detect connector readiness
 
 ```bash
-# Watch mode (extension + webview)
-pnpm run dev
+node dist/cli.js detect --connectors github,linear,slack
+```
 
-# Build only extension
-pnpm run build:extension
+### Synthesize a workday plan (rules)
 
-# Build only webview
-pnpm run build:webview
+```bash
+node dist/cli.js synth --connectors github,linear,slack --workday-minutes 480
+```
+
+### Synthesize with AI
+
+```bash
+OPENAI_API_KEY=... node dist/cli.js synth --connectors github,linear --ai openai
+# or
+node dist/cli.js synth --connectors github --ai ollama
+```
+
+## Environment variables
+
+- `LINEAR_API_KEY`: Linear personal API key (for Linear connector)
+- `SLACK_USER_TOKEN`: Slack user token (for Slack connector)
+- `OPENAI_API_KEY`: required for `--ai openai`
+- `OPENAI_BASE_URL`: optional OpenAI-compatible endpoint
+- `OPENAI_MODEL`: optional model override
+- `OLLAMA_BASE_URL`: optional (default `http://localhost:11434`)
+- `OLLAMA_MODEL`: optional model override
+
+## JSON output
+
+`workday synth` prints machine-readable JSON:
+
+- `plan`: synthesized `WorkdayPlan`
+- `meta.rawEvents`: ingested raw events count
+- `meta.artifacts`: normalized artifacts count
+- `meta.connectorErrors`: non-fatal connector errors
+
+## Project structure
+
+```
+src/
+  cli.ts                    # command entrypoint
+  connectors/               # github/linear/slack connectors
+  pipeline/                 # ingest, normalize, correlate, prioritize, schedule, ai-synthesize
+  ai/                       # OpenAI/Ollama providers
+  types/                    # shared models
 ```
 
 ## License

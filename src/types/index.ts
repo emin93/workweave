@@ -1,5 +1,3 @@
-// ── Artifact Types ──
-
 export type ArtifactType =
   | "pr"
   | "issue"
@@ -21,8 +19,6 @@ export type ActionType =
   | "snooze"
   | "start_work";
 
-// ── Raw Events ──
-
 export interface RawEvent {
   id: string;
   connectorId: string;
@@ -30,8 +26,6 @@ export interface RawEvent {
   rawPayload: unknown;
   fetchedAt: string;
 }
-
-// ── Artifacts ──
 
 export interface Artifact {
   id: string;
@@ -41,14 +35,12 @@ export interface Artifact {
   sourceUrl: string;
   connectorId: string;
   externalId: string;
-  priority?: number; // normalized 0-1
+  priority?: number;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown>;
   relatedArtifactIds: string[];
 }
-
-// ── Execution Actions ──
 
 export interface ExecutionAction {
   id: string;
@@ -58,15 +50,13 @@ export interface ExecutionAction {
   params: Record<string, unknown>;
 }
 
-// ── Task Clusters ──
-
 export interface TaskCluster {
   id: string;
   title: string;
   summary: string;
   category: TaskCategory;
   artifacts: Artifact[];
-  priorityScore: number; // 0-100
+  priorityScore: number;
   priorityReasons: string[];
   estimatedMinutes: number;
   status: TaskStatus;
@@ -84,7 +74,7 @@ export type TaskCategory =
   | "follow_up"
   | "other";
 
-// ── Workday Plan ──
+export type AIProviderType = "openai" | "ollama";
 
 export interface WorkdayPlan {
   id: string;
@@ -97,9 +87,7 @@ export interface WorkdayPlan {
   synthesisProvider?: AIProviderType;
 }
 
-// ── Connector Types ──
-
-export type ConnectorAuthMethod = "cli" | "extension" | "token";
+export type ConnectorAuthMethod = "cli" | "token";
 
 export type ConnectorStatus =
   | { available: true; authMethod: ConnectorAuthMethod }
@@ -119,82 +107,6 @@ export interface Connector {
   fetch(): Promise<RawEvent[]>;
   getCapabilities(): ConnectorCapability[];
 }
-
-// ── User Configuration ──
-
-export type OnboardingState =
-  | "not_started"
-  | "detecting"
-  | "selecting"
-  | "ai_setup"
-  | "configuring"
-  | "validating"
-  | "complete";
-
-export interface ConnectorConfig {
-  id: string;
-  enabled: boolean;
-  authMethod: ConnectorAuthMethod;
-  settings: Record<string, unknown>;
-}
-
-export type AIProviderType = "openai" | "cursor" | "ollama";
-
-export interface AIConfig {
-  provider: AIProviderType;
-  openai?: { baseUrl?: string; model?: string };
-  ollama?: { baseUrl?: string; model?: string };
-}
-
-export const DEFAULT_AI_CONFIG: AIConfig = {
-  provider: "cursor",
-};
-
-export interface UserConfig {
-  workdayMinutes: number;
-  startTime: string;
-  autoSync: boolean;
-  enabledConnectors: ConnectorConfig[];
-  onboardingState: OnboardingState;
-  ai: AIConfig;
-}
-
-export const DEFAULT_USER_CONFIG: UserConfig = {
-  workdayMinutes: 480,
-  startTime: "09:00",
-  autoSync: true,
-  enabledConnectors: [],
-  onboardingState: "not_started",
-  ai: { ...DEFAULT_AI_CONFIG },
-};
-
-// ── Webview Messages ──
-
-export type ExtensionMessage =
-  | { type: "state:plan"; plan: WorkdayPlan | null }
-  | { type: "state:config"; config: UserConfig }
-  | { type: "state:connectors"; connectors: ConnectorInfo[] }
-  | { type: "state:syncing"; syncing: boolean }
-  | { type: "state:error"; error: string }
-  | { type: "state:onboarding"; step: OnboardingState; detectedConnectors?: ConnectorInfo[] }
-  | { type: "state:aiTestResult"; success: boolean; message: string };
-
-export type WebviewMessage =
-  | { type: "action:synthesize" }
-  | { type: "action:resynthesize" }
-  | { type: "action:execute"; clusterId: string; actionId: string }
-  | { type: "action:snooze"; clusterId: string; hours: number }
-  | { type: "action:markDone"; clusterId: string }
-  | { type: "action:openSettings" }
-  | { type: "action:resetOnboarding" }
-  | { type: "action:setAIConfig"; ai: AIConfig }
-  | { type: "action:setAIKey"; apiKey: string }
-  | { type: "action:testAI"; ai: AIConfig; apiKey?: string }
-  | { type: "onboarding:selectConnectors"; connectorIds: string[] }
-  | { type: "onboarding:setAI"; ai: AIConfig; apiKey?: string }
-  | { type: "onboarding:configure"; config: Partial<UserConfig> }
-  | { type: "onboarding:complete" }
-  | { type: "ready" };
 
 export interface ConnectorInfo {
   id: string;

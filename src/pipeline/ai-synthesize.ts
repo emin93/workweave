@@ -4,7 +4,6 @@ import type {
   TaskCategory,
 } from "../types";
 import type { LLMProvider } from "../ai/provider";
-import { CursorChatProvider } from "../ai/provider";
 import { stableClusterId } from "./cluster-id";
 import { buildActions } from "./prioritize";
 import { correlate } from "./correlate";
@@ -84,14 +83,8 @@ export async function aiSynthesize(
 
     log?.info(`AI synthesis: sending ${artifacts.length} artifacts to ${provider.name}`);
 
-    let raw: string;
-    if (provider instanceof CursorChatProvider) {
-      const artifactItems = buildArtifactItems(artifacts);
-      raw = await provider.complete(JSON.stringify(artifactItems, null, 2));
-    } else {
-      const prompt = buildPrompt(artifacts);
-      raw = await provider.complete(prompt);
-    }
+    const prompt = buildPrompt(artifacts);
+    const raw = await provider.complete(prompt);
 
     if (!raw || raw.trim().length === 0) {
       log?.warn("AI returned empty response, falling back to rules");

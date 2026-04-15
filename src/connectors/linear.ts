@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import type {
   Connector,
   ConnectorStatus,
@@ -8,16 +7,6 @@ import type {
 import * as https from "https";
 
 const LINEAR_API = "https://api.linear.app/graphql";
-
-let _log: vscode.LogOutputChannel | undefined;
-function log(): vscode.LogOutputChannel {
-  if (!_log) {
-    _log = vscode.window.createOutputChannel("Workday Synthesizer", {
-      log: true,
-    });
-  }
-  return _log;
-}
 
 async function linearQuery<T>(
   token: string,
@@ -46,26 +35,14 @@ async function linearQuery<T>(
           try {
             const parsed = JSON.parse(data);
             if (parsed.errors) {
-              log().error(
-                `[linear] API errors: ${JSON.stringify(parsed.errors)}`
-              );
-              reject(
-                new Error(parsed.errors[0]?.message ?? "Linear API error")
-              );
+              reject(new Error(parsed.errors[0]?.message ?? "Linear API error"));
             } else if (!parsed.data) {
-              log().error(
-                `[linear] No data in response: ${data.slice(0, 500)}`
-              );
               reject(new Error("Linear API returned no data"));
             } else {
               resolve(parsed.data as T);
             }
           } catch {
-            reject(
-              new Error(
-                `Failed to parse Linear response (HTTP ${res.statusCode})`
-              )
-            );
+            reject(new Error(`Failed to parse Linear response (HTTP ${res.statusCode})`));
           }
         });
       }
@@ -88,148 +65,51 @@ export class LinearConnector implements Connector {
   private _token: string | null = null;
 
   async detect(): Promise<ConnectorStatus> {
-    try {
-      const ext = vscode.extensions.getExtension("linear.linear-connect");
-      if (ext) {
-        return { available: true, authMethod: "extension" };
-      }
-    } catch {
-      // Extension not available
+    if (!process.env.LINEAR_API_KEY) {
+      return {
+        available: false,
+        reason: "LINEAR_API_KEY is not set",
+        setupInstructions:
+          "Set LINEAR_API_KEY in your environment with a personal API key from Linear settings.",
+      };
     }
-
-    return {
-      available: false,
-      reason: "Linear Connect extension not installed",
-      setupInstructions: [
-        "1. Open the Extensions panel (Ctrl+Shift+X)",
-        '2. Search for "Linear" by Linear',
-        "3. Install the Linear Connect extension",
-        "4. Restart Cursor / VS Code",
-        "5. Re-run onboarding — Linear will appear as Ready",
-        "",
-        "The extension handles authentication automatically",
-        "via OAuth when you first sync.",
-      ].join("\n"),
-    };
+    return { available: true, authMethod: "token" };
   }
 
   async authenticate(): Promise<boolean> {
+    this._token = process.env.LINEAR_API_KEY ?? null;
+    if (!this._token) return false;
     try {
-      let session = await vscode.authentication.getSession(
-        "linear",
-        ["read"],
-        { silent: true }
-      );
-
-      if (!session) {
-        session = await vscode.authentication.getSession(
-          "linear",
-          ["read"],
-          { createIfNone: true }
-        );
-      }
-
-      if (session) {
-        this._token = session.accessToken;
-        return true;
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("User did not consent")) {
-        throw new Error(`Linear authentication failed: ${msg}`);
-      }
+      await linearQuery(this._token, `query { viewer { id } }`);
+      return true;
+    } catch {
+      return false;
     }
-    return false;
   }
 
   getCapabilities(): ConnectorCapability[] {
-    return [
-      { type: "issue", description: "Issues assigned to you or created by you" },
-    ];
+    return [{ type: "issue", description: "Issues assigned to you" }];
   }
 
   async fetch(): Promise<RawEvent[]> {
     if (!this._token) {
       const ok = await this.authenticate();
-      if (!ok) {
-        throw new Error(
-          "Linear authentication required. A browser window should have opened — please sign in and sync again."
-        );
-      }
+      if (!ok) throw new Error("Linear authentication failed");
     }
 
-    const events: RawEvent[] = [];
-    const seen = new Set<string>();
     const now = new Date().toISOString();
-
-    // Get viewer info (needed for createdIssues query)
-    const me = await linearQuery<{
-      viewer: { id: string; name: string; email: string };
-    }>(this._token!, `query { viewer { id name email } }`);
-    log().info(
-      `[linear] Authenticated as: ${me.viewer?.name} (${me.viewer?.email})`
-    );
-
-    const addIssues = (issues: LinearIssue[], source: string) => {
-      for (const issue of issues) {
-        if (seen.has(issue.id)) continue;
-        seen.add(issue.id);
-        events.push({
-          id: `linear-issue-${issue.identifier}`,
-          connectorId: this.id,
-          sourceType: "issue",
-          rawPayload: issue,
-          fetchedAt: now,
-        });
-      }
-      log().info(`[linear] ${source}: ${issues.length} issue(s)`);
-    };
-
-    // 1. Issues assigned to the viewer
     const assigned = await linearQuery<ViewerIssuesResponse>(
       this._token!,
       ASSIGNED_ISSUES_QUERY
     );
-    addIssues(assigned.viewer?.assignedIssues?.nodes ?? [], "Assigned");
 
-    // 2. Issues created by the viewer (that are still active)
-    const created = await linearQuery<{ issues: { nodes: LinearIssue[] } }>(
-      this._token!,
-      CREATED_ISSUES_QUERY,
-      { userId: me.viewer.id }
-    );
-    addIssues(created.issues?.nodes ?? [], "Created by you");
-
-    // 3. Issues from the viewer's active team cycles (fetched per-team to stay under complexity limits)
-    try {
-      const teamIds = await linearQuery<{
-        viewer: { teams: { nodes: Array<{ id: string; name: string }> } };
-      }>(
-        this._token!,
-        `query { viewer { teams { nodes { id name } } } }`
-      );
-      for (const team of teamIds.viewer?.teams?.nodes ?? []) {
-        try {
-          const cycleData = await linearQuery<{
-            team: {
-              activeCycle?: { issues: { nodes: LinearIssue[] } };
-            };
-          }>(this._token!, TEAM_CYCLE_QUERY, { teamId: team.id });
-          const cycleIssues =
-            cycleData.team?.activeCycle?.issues?.nodes ?? [];
-          addIssues(cycleIssues, `Cycle: ${team.name}`);
-        } catch (err) {
-          log().warn(
-            `[linear] Failed to fetch cycle for ${team.name}: ${err instanceof Error ? err.message : err}`
-          );
-        }
-      }
-    } catch {
-      // Team query may fail — that's fine
-    }
-
-    log().info(`[linear] Total unique issues: ${events.length}`);
-    return events;
+    return (assigned.viewer?.assignedIssues?.nodes ?? []).map((issue) => ({
+      id: `linear-issue-${issue.identifier}`,
+      connectorId: this.id,
+      sourceType: "issue",
+      rawPayload: issue,
+      fetchedAt: now,
+    }));
   }
 }
 
@@ -246,7 +126,6 @@ const ISSUE_FIELDS = `
   createdAt
   updatedAt
   state { name type }
-  assignee { id name }
   labels { nodes { name } }
   project { name }
   cycle { name startsAt endsAt }
@@ -266,37 +145,6 @@ const ASSIGNED_ISSUES_QUERY = `
   }
 `;
 
-const CREATED_ISSUES_QUERY = `
-  query($userId: ID!) {
-    issues(
-      filter: {
-        creator: { id: { eq: $userId } }
-        state: { type: { nin: ["completed", "canceled"] } }
-      }
-      first: 30
-      orderBy: updatedAt
-    ) {
-      nodes { ${ISSUE_FIELDS} }
-    }
-  }
-`;
-
-const TEAM_CYCLE_QUERY = `
-  query($teamId: String!) {
-    team(id: $teamId) {
-      activeCycle {
-        issues(
-          filter: { state: { type: { nin: ["completed", "canceled"] } } }
-          first: 30
-          orderBy: updatedAt
-        ) {
-          nodes { ${ISSUE_FIELDS} }
-        }
-      }
-    }
-  }
-`;
-
 interface LinearIssue {
   id: string;
   identifier: string;
@@ -310,7 +158,6 @@ interface LinearIssue {
   createdAt: string;
   updatedAt: string;
   state: { name: string; type: string };
-  assignee?: { id: string; name: string };
   labels: { nodes: Array<{ name: string }> };
   project?: { name: string };
   cycle?: { name: string; startsAt: string; endsAt: string };
@@ -323,4 +170,3 @@ interface ViewerIssuesResponse {
     };
   };
 }
-
