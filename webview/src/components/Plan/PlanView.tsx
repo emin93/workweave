@@ -129,6 +129,7 @@ function PlanHeader() {
           </span>
         )}
       </div>
+      {plan && <ProgressBar plan={plan} />}
     </div>
   );
 }
@@ -237,6 +238,41 @@ function LoadingState() {
             <div className="h-2 bg-vscode-listHover rounded w-1/2" />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({
+  plan,
+}: {
+  plan: import("../../../../src/types").WorkdayPlan;
+}) {
+  const total = plan.clusters.length;
+  if (total === 0) return null;
+
+  const done = plan.clusters.filter((c) => c.status === "done").length;
+  const inProgress = plan.clusters.filter(
+    (c) => c.status === "in_progress"
+  ).length;
+  const pctDone = (done / total) * 100;
+  const pctActive = (inProgress / total) * 100;
+
+  return (
+    <div className="mt-2">
+      <div className="h-1 rounded-full bg-vscode-inputBg overflow-hidden flex">
+        <div
+          className="h-full bg-vscode-success transition-all duration-300"
+          style={{ width: `${pctDone}%` }}
+        />
+        <div
+          className="h-full bg-vscode-link transition-all duration-300"
+          style={{ width: `${pctActive}%` }}
+        />
+      </div>
+      <div className="text-[9px] text-vscode-descFg mt-0.5">
+        {done}/{total} done
+        {inProgress > 0 && ` \u2022 ${inProgress} in progress`}
       </div>
     </div>
   );
